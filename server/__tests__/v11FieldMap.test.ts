@@ -7,43 +7,42 @@ import { mergeModel, sqlToModel } from '../sqlImport.ts';
 import { modelToInputSql } from '../sqlExport.ts';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const complexSql = readFileSync(
-  path.join(dir, '..', '..', 'examples', 'input', 'demo_lakehouse_complex.sql'),
+const demoSql = readFileSync(
+  path.join(dir, '..', '..', 'examples', 'input', 'demo_lakehouse_oracle.sql'),
   'utf8',
 );
 
-// Conta mapeamentos L2 em comentário (formato antigo `@map <-` e novo rodapé `col <- src`).
 function countLineageMaps(sql: string): number {
   return (sql.match(/--[^\n]*<-/g) ?? []).length;
 }
 
-describe('v11-04 demo_lakehouse_complex L2', () => {
-  it('sqlToModel popula lineageFields incluindo line_id', () => {
-    const model = sqlToModel(complexSql);
-    expect(model.lineageFields?.length).toBeGreaterThan(30);
+describe('v11-04 demo_lakehouse_oracle L2', () => {
+  it('sqlToModel popula lineageFields incluindo seq_item', () => {
+    const model = sqlToModel(demoSql);
+    expect(model.lineageFields?.length).toBeGreaterThan(20);
     expect(
       model.lineageFields?.some(
         (f) =>
-          f.targetTable === 'silver.stg_order_lines' &&
-          f.targetColumn === 'line_id' &&
-          f.sourceTable === 'raw.erp_order_lines' &&
-          f.sourceColumn === 'line_id',
+          f.targetTable === 'silver.fato_pedido_item' &&
+          f.targetColumn === 'seq_item' &&
+          f.sourceTable === 'staging.erp_pedido_item' &&
+          f.sourceColumn === 'seq_item',
       ),
     ).toBe(true);
   });
 
-  it('export Oracle emite rodapé @lineage para line_id', () => {
-    const model = sqlToModel(complexSql);
+  it('export Oracle emite rodapé @lineage para seq_item', () => {
+    const model = sqlToModel(demoSql);
     const oracleSql = modelToInputSql(model, 'oracle');
-    expect(oracleSql).toContain('-- @lineage silver.stg_order_lines');
-    expect(oracleSql).toMatch(/--\s+line_id <- raw\.erp_order_lines\.line_id/);
+    expect(oracleSql).toContain('-- @lineage silver.fato_pedido_item');
+    expect(oracleSql).toMatch(/--\s+seq_item <- staging\.erp_pedido_item\.seq_item/);
   });
 
   it('round-trip preserva ≥95% dos mapeamentos L2 da fixture', () => {
-    const sourceMaps = countLineageMaps(complexSql);
-    expect(sourceMaps).toBeGreaterThan(50);
+    const sourceMaps = countLineageMaps(demoSql);
+    expect(sourceMaps).toBeGreaterThanOrEqual(20);
 
-    const model0 = sqlToModel(complexSql);
+    const model0 = sqlToModel(demoSql);
     const dbml = modelToDbml(model0);
     const model1 = dbmlToModel(dbml);
     const exported = modelToInputSql(model1, 'oracle');
@@ -58,28 +57,31 @@ describe('v11-04 demo_lakehouse_complex L2', () => {
   });
 
   it('mergeModel preserva L2 do editor e do input', () => {
-    const editorDbml = `Table raw.erp_order_lines {
-  line_id bigint [pk]
+    const editorDbml = `Table staging.erp_pedido_item {
+  pedido_id number(19) [pk]
+  seq_item number(5) [pk]
 }
-Table silver.stg_order_lines {
-  line_id bigint [pk]
-  order_id bigint
+Table silver.fato_pedido_item {
+  sk_item number(19) [pk]
+  seq_item number(5)
 }
 
 LineageFields {
-  silver.stg_order_lines.line_id < raw.erp_order_lines.line_id
+  silver.fato_pedido_item.seq_item < staging.erp_pedido_item.seq_item
 }
 `;
     const inputSql = `
-CREATE TABLE silver.stg_order_lines (
-  line_id BIGINT,
-  order_id BIGINT, -- @map <- raw.erp_orders.order_id
-  PRIMARY KEY (line_id)
-) USING DELTA;
-CREATE TABLE raw.erp_orders (
-  order_id BIGINT,
-  PRIMARY KEY (order_id)
-) USING DELTA;
+CREATE TABLE silver.fato_pedido_item (
+  sk_item NUMBER(19),
+  quantidade NUMBER(10), -- @map <- staging.erp_pedido_item.quantidade
+  CONSTRAINT pk_item PRIMARY KEY (sk_item)
+);
+CREATE TABLE staging.erp_pedido_item (
+  pedido_id NUMBER(19),
+  seq_item NUMBER(5),
+  quantidade NUMBER(10),
+  CONSTRAINT pk_erp_item PRIMARY KEY (pedido_id, seq_item)
+);
 `;
 
     const base = dbmlToModel(editorDbml);
@@ -87,8 +89,8 @@ CREATE TABLE raw.erp_orders (
     const merged = mergeModel(base, incoming);
     const dbml = modelToDbml(merged);
 
-    expect(dbml).toContain('silver.stg_order_lines.line_id < raw.erp_order_lines.line_id');
-    expect(dbml).toContain('silver.stg_order_lines.order_id < raw.erp_orders.order_id');
+    expect(dbml).toContain('silver.fato_pedido_item.seq_item < staging.erp_pedido_item.seq_item');
+    expect(dbml).toContain('silver.fato_pedido_item.quantidade < staging.erp_pedido_item.quantidade');
     expect(merged.lineageFields).toHaveLength(2);
   });
 });

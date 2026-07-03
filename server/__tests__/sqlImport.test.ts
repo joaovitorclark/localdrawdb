@@ -185,43 +185,30 @@ CREATE TABLE silver.t (
   });
 });
 
-describe('demo_lakehouse.sql', () => {
-  it('não gera refs inválidas nem quebra o parse do DBML', () => {
-    const sql = readFileSync(join(process.cwd(), 'examples/input/demo_lakehouse.sql'), 'utf8');
-    const m = sqlToModel(sql);
-    const bogus = m.refs.find((r) => r.from.column === 'col' || r.to.table === 'tabela');
-    expect(bogus).toBeUndefined();
-    const ordersFk = m.refs.find(
-      (r) => r.from.table === 'raw.orders' && r.from.column === 'customer_id',
-    );
-    expect(ordersFk?.to.table).toBe('raw.customers');
-    expect(m.lineage?.some((l) => l.target === 'silver.dim_customer')).toBe(true);
-    expect(m.lineageFields?.length).toBeGreaterThan(5);
-    const dbml = modelToDbml(m);
-    expect(dbml).toContain('Lineage {');
-    expect(dbml).toContain('LineageFields {');
-    const parsed = parseDbml(dbml);
-    expect(parsed.error).toBeUndefined();
-    expect(parsed.lineage.length).toBeGreaterThan(0);
-  });
-});
-
-describe('demo_lakehouse_complex.sql', () => {
-  it('importa hierarquia ampla de linhagem sem quebrar parse', () => {
-    const sql = readFileSync(join(process.cwd(), 'examples/input/demo_lakehouse_complex.sql'), 'utf8');
+describe('demo_lakehouse_oracle.sql', () => {
+  it('importa fixture educativa Oracle sem quebrar parse', () => {
+    const sql = readFileSync(join(process.cwd(), 'examples/input/demo_lakehouse_oracle.sql'), 'utf8');
     const m = sqlToModel(sql);
     expect(m.tables.length).toBeGreaterThanOrEqual(20);
-    expect(m.lineage?.length).toBeGreaterThanOrEqual(10);
-    expect(m.lineageFields?.length).toBeGreaterThanOrEqual(50);
-    expect(m.lineage?.some((l) => l.target === 'gold.report_exec_dashboard')).toBe(true);
+    expect(m.refs.length).toBeGreaterThanOrEqual(15);
+    expect(m.lineage?.length).toBeGreaterThanOrEqual(8);
+    expect(m.lineageFields?.length).toBeGreaterThanOrEqual(20);
+    const pedidoFk = m.refs.find(
+      (r) => r.from.table === 'staging.erp_pedido' && r.from.column === 'conta_id',
+    );
+    expect(pedidoFk?.to.table).toBe('staging.crm_conta');
+    expect(m.lineage?.some((l) => l.target === 'silver.dim_conta')).toBe(true);
     expect(
-      m.lineage?.some(
-        (l) =>
-          l.target === 'silver.stg_order_lines' &&
-          l.sources?.includes('raw.erp_order_lines'),
+      m.lineageFields?.some(
+        (f) =>
+          f.targetTable === 'silver.fato_pedido_item' &&
+          f.targetColumn === 'seq_item' &&
+          f.sourceTable === 'staging.erp_pedido_item',
       ),
     ).toBe(true);
     const dbml = modelToDbml(m);
+    expect(dbml).toContain('Lineage {');
+    expect(dbml).toContain('LineageFields {');
     const parsed = parseDbml(dbml);
     expect(parsed.error).toBeUndefined();
   });

@@ -8,29 +8,27 @@ import { modelToInputSql } from '../sqlExport.ts';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const demoSql = readFileSync(
-  path.join(dir, '..', '..', 'examples', 'input', 'demo_lakehouse.sql'),
+  path.join(dir, '..', '..', 'examples', 'input', 'demo_lakehouse_oracle.sql'),
   'utf8',
 );
 
 describe('export input SQL', () => {
-  it('demo_lakehouse import → export Spark contém tabelas e metadados', () => {
+  it('demo_lakehouse_oracle import → export Oracle contém tabelas e metadados', () => {
     const imported = sqlToModel(demoSql);
-    expect(imported.tables.length).toBeGreaterThan(3);
-    const sparkSql = modelToInputSql(imported, 'spark');
-    expect(sparkSql).toContain('-- @layer: bronze');
-    expect(sparkSql).toContain('CREATE TABLE IF NOT EXISTS raw.orders');
-    expect(sparkSql).toContain('USING DELTA');
-    expect(sparkSql).toContain('INSERT INTO raw.orders');
-    expect(sparkSql).toContain('PRIMARY KEY (period, region)');
-  });
-
-  it('export Oracle gera VARCHAR2/NUMBER e CONSTRAINT FK', () => {
-    const imported = sqlToModel(demoSql);
-    const oracleTables = imported.tables.filter((t) => t.schema === 'staging');
-    const oracleSql = modelToInputSql({ tables: oracleTables, refs: imported.refs }, 'oracle');
-    expect(oracleSql).toContain('CREATE TABLE staging.cliente');
+    expect(imported.tables.length).toBeGreaterThan(15);
+    const oracleSql = modelToInputSql(imported, 'oracle');
+    expect(oracleSql).toContain('-- @layer: bronze');
+    expect(oracleSql).toContain('CREATE TABLE staging.erp_pedido');
     expect(oracleSql).toContain('VARCHAR2');
     expect(oracleSql).toContain('NUMBER');
+    expect(oracleSql).toContain('INSERT INTO staging.erp_pedido');
+    expect(oracleSql).toContain('PRIMARY KEY (periodo, regiao)');
+  });
+
+  it('export Oracle gera CONSTRAINT FK', () => {
+    const imported = sqlToModel(demoSql);
+    const oracleSql = modelToInputSql(imported, 'oracle');
+    expect(oracleSql).toContain('CREATE TABLE staging.crm_conta');
     expect(oracleSql).toContain('FOREIGN KEY');
   });
 
@@ -38,33 +36,26 @@ describe('export input SQL', () => {
     const model0 = sqlToModel(demoSql);
     const dbml = modelToDbml(model0);
     const model1 = dbmlToModel(dbml);
-    const exported = modelToInputSql(model1, 'spark');
+    const exported = modelToInputSql(model1, 'oracle');
     const model2 = sqlToModel(exported);
 
-    const orders0 = model0.tables.find((t) => t.name === 'orders' && t.schema === 'raw')!;
-    const orders2 = model2.tables.find((t) => t.name === 'orders' && t.schema === 'raw')!;
-    expect(orders2.layer).toBe(orders0.layer);
-    expect(orders2.group).toBe(orders0.group);
-    expect(model2.refs.some((r) => r.from.column === 'customer_id')).toBe(true);
-    expect(orders2.records?.rows.length).toBeGreaterThan(0);
+    const pedido0 = model0.tables.find((t) => t.name === 'erp_pedido' && t.schema === 'staging')!;
+    const pedido2 = model2.tables.find((t) => t.name === 'erp_pedido' && t.schema === 'staging')!;
+    expect(pedido2.layer).toBe(pedido0.layer);
+    expect(pedido2.group).toBe(pedido0.group);
+    expect(model2.refs.some((r) => r.from.column === 'conta_id')).toBe(true);
+    expect(pedido2.records?.rows.length).toBeGreaterThan(0);
     expect(model1.lineage?.length).toBe(model0.lineage?.length);
     expect(model1.lineageFields?.length).toBe(model0.lineageFields?.length);
   });
 
   it('export emite @origen e rodapé @lineage', () => {
     const model = sqlToModel(demoSql);
-    const sparkSql = modelToInputSql(model, 'spark');
-    expect(sparkSql).toContain('-- @origen: raw.customers');
-    expect(sparkSql).toContain('-- @lineage silver.dim_customer');
-    expect(sparkSql).toContain('--   natural_id <- raw.customers.id');
-    expect(sparkSql).toContain("note: 'SUM(total) por periodo/regiao'");
-    // @map inline não é mais emitido
-    expect(sparkSql).not.toMatch(/^\s*\w+ \w+.*-- @map <-/m);
-  });
-
-  it('export Spark emite descrição de coluna inline (Column.note)', () => {
-    const model = sqlToModel(demoSql);
-    const sparkSql = modelToInputSql(model, 'spark');
-    expect(sparkSql).toMatch(/customer_key BIGINT.*-- surrogate key/);
+    const oracleSql = modelToInputSql(model, 'oracle');
+    expect(oracleSql).toContain('-- @origen: staging.crm_conta');
+    expect(oracleSql).toContain('-- @lineage silver.dim_conta');
+    expect(oracleSql).toContain('--   conta_natural_id <- staging.crm_conta.conta_id');
+    expect(oracleSql).toContain("note: 'SUM(valor_bruto) por dia'");
+    expect(oracleSql).not.toMatch(/^\s*\w+ \w+.*-- @map <-/m);
   });
 });

@@ -1,0 +1,161 @@
+{
+  "positions": {
+    "gold.kpi_vendas_dia": {
+      "x": 318,
+      "y": 40
+    },
+    "gold.fato_cliente_mes": {
+      "x": 40,
+      "y": 40
+    },
+    "silver.bridge_conta_contato": {
+      "x": 694,
+      "y": 40
+    },
+    "silver.dim_conta": {
+      "x": 1460,
+      "y": 64
+    },
+    "silver.dim_produto": {
+      "x": 1356,
+      "y": 682
+    },
+    "silver.dim_loja": {
+      "x": 1080,
+      "y": 682
+    },
+    "silver.dim_forma_pagamento": {
+      "x": 1356,
+      "y": 461
+    },
+    "silver.dim_calendario": {
+      "x": 1080,
+      "y": 461
+    },
+    "silver.dim_contato": {
+      "x": 1104,
+      "y": 114
+    },
+    "silver.fato_pedido": {
+      "x": 2255,
+      "y": 341.25
+    },
+    "silver.fato_pedido_item": {
+      "x": 1868,
+      "y": 64
+    },
+    "silver.fato_pagamento": {
+      "x": 1881,
+      "y": 556
+    },
+    "silver.fato_evento_marketing": {
+      "x": 1844,
+      "y": 903
+    },
+    "staging.erp_pedido": {
+      "x": 2638,
+      "y": 286
+    },
+    "staging.erp_pedido_item": {
+      "x": 2918,
+      "y": 286
+    },
+    "staging.crm_conta": {
+      "x": 2918,
+      "y": 40
+    },
+    "staging.crm_contato": {
+      "x": 3196,
+      "y": 40
+    },
+    "staging.catalogo_produto": {
+      "x": 2638,
+      "y": 40
+    },
+    "staging.gateway_pagamento": {
+      "x": 3196,
+      "y": 286
+    },
+    "staging.web_evento": {
+      "x": 3606,
+      "y": 40
+    },
+    "gold.report_executivo": {
+      "x": 3984,
+      "y": 40
+    }
+  },
+  "sizes": {
+    "silver.fato_pedido_item": 280
+  },
+  "colors": {},
+  "collapsedGroups": [],
+  "pages": [
+    {
+      "id": "__all__",
+      "name": "Todas",
+      "tableGroups": [
+        "__all__"
+      ]
+    },
+    {
+      "id": "agregados",
+      "name": "agregados",
+      "tableGroups": [
+        "agregados"
+      ]
+    },
+    {
+      "id": "bridge",
+      "name": "bridge",
+      "tableGroups": [
+        "bridge"
+      ]
+    },
+    {
+      "id": "dimensoes",
+      "name": "dimensoes",
+      "tableGroups": [
+        "dimensoes"
+      ]
+    },
+    {
+      "id": "fatos",
+      "name": "fatos",
+      "tableGroups": [
+        "fatos"
+      ]
+    },
+    {
+      "id": "ingestao_oracle",
+      "name": "ingestao_oracle",
+      "tableGroups": [
+        "ingestao_oracle"
+      ]
+    },
+    {
+      "id": "ingestao_web",
+      "name": "ingestao_web",
+      "tableGroups": [
+        "ingestao_web"
+      ]
+    },
+    {
+      "id": "reports",
+      "name": "reports",
+      "tableGroups": [
+        "reports"
+      ]
+    }
+  ],
+  "activePageIds": [
+    "__all__",
+    "agregados",
+    "bridge",
+    "dimensoes",
+    "fatos",
+    "ingestao_oracle",
+    "ingestao_web",
+    "reports"
+  ]
+}

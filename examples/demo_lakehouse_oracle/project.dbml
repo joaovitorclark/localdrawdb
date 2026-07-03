@@ -1,0 +1,496 @@
+Table staging.erp_pedido {
+  pedido_id number(19) [pk, note: 'Identificador natural do pedido no ERP']
+  conta_id varchar2(32)
+  loja_codigo varchar2(16)
+  moeda varchar2(3)
+  status_pedido varchar2(32)
+  valor_bruto number(18,2)
+  criado_em timestamp
+}
+
+Table staging.erp_pedido_item {
+  pedido_id number(19) [not null]
+  seq_item number(5) [not null]
+  sku varchar2(32)
+  quantidade number(10)
+  preco_unitario number(18,4)
+  desconto_pct number(5,2)
+  indexes {
+    (pedido_id, seq_item) [pk]
+  }
+}
+
+Table staging.crm_conta {
+  conta_id varchar2(32) [pk]
+  razao_social varchar2(255)
+  segmento varchar2(64)
+  regiao varchar2(64)
+  pais varchar2(2)
+}
+
+Table staging.crm_contato {
+  contato_id varchar2(32) [pk]
+  conta_id varchar2(32)
+  nome varchar2(255)
+  email varchar2(255)
+  cargo varchar2(128)
+}
+
+Table staging.catalogo_produto {
+  sku varchar2(32) [pk]
+  nome_produto varchar2(255)
+  categoria_n1 varchar2(64)
+  categoria_n2 varchar2(64)
+  preco_lista number(18,2)
+  ativo number(1)
+}
+
+Table staging.gateway_pagamento {
+  txn_id varchar2(32) [pk]
+  pedido_id number(19)
+  valor number(18,2)
+  forma_pagamento varchar2(32)
+  status_pagamento varchar2(32)
+  pago_em timestamp
+}
+
+Table staging.web_evento {
+  evento_id varchar2(32) [pk]
+  sessao_id varchar2(64)
+  email_contato varchar2(255)
+  tipo_evento varchar2(64)
+  url_pagina varchar2(512)
+  ocorrido_em timestamp
+}
+
+Table silver.dim_conta {
+  sk_conta number(19) [pk]
+  conta_natural_id varchar2(32)
+  razao_social varchar2(255)
+  segmento varchar2(64)
+  regiao varchar2(64)
+  vigente number(1)
+  valido_de timestamp
+  valido_ate timestamp
+  dt_carga_silver timestamp
+}
+
+Table silver.dim_produto {
+  sk_produto number(19) [pk]
+  sku varchar2(32)
+  nome_produto varchar2(255)
+  categoria_n1 varchar2(64)
+  categoria_n2 varchar2(64)
+  preco_lista number(18,2)
+  dt_carga_silver timestamp
+}
+
+Table silver.dim_loja {
+  sk_loja number(5) [pk]
+  codigo_loja varchar2(16)
+  nome_loja varchar2(128)
+  uf varchar2(2)
+}
+
+Table silver.dim_forma_pagamento {
+  sk_forma_pagamento number(5) [pk]
+  codigo varchar2(32)
+  descricao varchar2(128)
+}
+
+Table silver.dim_calendario {
+  sk_data number(8) [pk]
+  data_ref date
+  ano number(4)
+  mes number(2)
+  dia number(2)
+}
+
+Table silver.dim_contato {
+  sk_contato number(19) [pk]
+  contato_natural_id varchar2(32)
+  sk_conta number(19)
+  nome varchar2(255)
+  email varchar2(255)
+}
+
+Table silver.fato_pedido {
+  sk_pedido number(19) [pk]
+  pedido_natural_id number(19)
+  sk_conta number(19)
+  sk_loja number(5)
+  sk_data number(8)
+  valor_bruto number(18,2)
+  status_pedido varchar2(32)
+  dt_carga_silver timestamp
+}
+
+Table silver.fato_pedido_item {
+  sk_item number(19) [pk]
+  sk_pedido number(19)
+  seq_item number(5)
+  sk_produto number(19)
+  quantidade number(10)
+  preco_unitario number(18,4)
+  desconto_pct number(5,2)
+  attr_001 varchar2(64)
+  attr_002 varchar2(64)
+  attr_003 varchar2(64)
+  attr_004 varchar2(64)
+  attr_005 varchar2(64)
+  attr_006 varchar2(64)
+  attr_007 varchar2(64)
+  attr_008 varchar2(64)
+  attr_009 varchar2(64)
+  attr_010 varchar2(64)
+  attr_011 varchar2(64)
+  attr_012 varchar2(64)
+  attr_013 varchar2(64)
+  attr_014 varchar2(64)
+  attr_015 varchar2(64)
+  attr_016 varchar2(64)
+  attr_017 varchar2(64)
+  attr_018 varchar2(64)
+  attr_019 varchar2(64)
+  attr_020 varchar2(64)
+  attr_021 varchar2(64)
+  attr_022 varchar2(64)
+  attr_023 varchar2(64)
+  attr_024 varchar2(64)
+  attr_025 varchar2(64)
+  attr_026 varchar2(64)
+  attr_027 varchar2(64)
+  attr_028 varchar2(64)
+  attr_029 varchar2(64)
+  attr_030 varchar2(64)
+  attr_031 varchar2(64)
+  attr_032 varchar2(64)
+  attr_033 varchar2(64)
+  attr_034 varchar2(64)
+  attr_035 varchar2(64)
+  attr_036 varchar2(64)
+  attr_037 varchar2(64)
+  attr_038 varchar2(64)
+  attr_039 varchar2(64)
+  attr_040 varchar2(64)
+  attr_041 varchar2(64)
+  attr_042 varchar2(64)
+  attr_043 varchar2(64)
+  attr_044 varchar2(64)
+  attr_045 varchar2(64)
+  attr_046 varchar2(64)
+  attr_047 varchar2(64)
+  attr_048 varchar2(64)
+  dt_carga_silver timestamp
+}
+
+Table silver.fato_pagamento {
+  sk_pagamento number(19) [pk]
+  txn_natural_id varchar2(32)
+  sk_pedido number(19)
+  sk_forma_pagamento number(5)
+  valor number(18,2)
+  status_pagamento varchar2(32)
+  dt_carga_silver timestamp
+}
+
+Table silver.fato_evento_marketing {
+  sk_evento number(19) [pk]
+  evento_natural_id varchar2(32)
+  sk_contato number(19)
+  tipo_evento varchar2(64)
+  url_pagina varchar2(512)
+  ocorrido_em timestamp
+  dt_carga_silver timestamp
+}
+
+Table silver.bridge_conta_contato {
+  sk_conta number(19) [not null]
+  sk_contato number(19) [not null]
+  papel varchar2(64)
+  dt_carga_silver timestamp
+  indexes {
+    (sk_conta, sk_contato) [pk]
+  }
+}
+
+Table gold.kpi_vendas_dia {
+  sk_data number(8) [pk]
+  total_pedidos number(10)
+  receita_bruta number(18,2)
+  ticket_medio number(18,2)
+  dt_carga_gold timestamp
+}
+
+Table gold.fato_cliente_mes {
+  sk_conta number(19) [not null]
+  ano_mes number(6) [not null]
+  receita number(18,2)
+  qtd_pedidos number(10)
+  valor_pago number(18,2)
+  dt_carga_gold timestamp
+  indexes {
+    (sk_conta, ano_mes) [pk]
+  }
+}
+
+Table gold.report_executivo {
+  periodo date [not null]
+  regiao varchar2(64) [not null]
+  segmento varchar2(64)
+  receita_consolidada number(18,2)
+  pedidos number(10)
+  indexes {
+    (periodo, regiao) [pk]
+  }
+}
+
+Ref: staging.erp_pedido.conta_id > staging.crm_conta.conta_id
+Ref: staging.erp_pedido_item.pedido_id > staging.erp_pedido.pedido_id
+Ref: staging.erp_pedido_item.sku > staging.catalogo_produto.sku
+Ref: staging.crm_contato.conta_id > staging.crm_conta.conta_id
+Ref: staging.gateway_pagamento.pedido_id > staging.erp_pedido.pedido_id
+Ref: silver.dim_conta.conta_natural_id > staging.crm_conta.conta_id
+Ref: silver.dim_produto.sku > staging.catalogo_produto.sku
+Ref: silver.dim_contato.sk_conta > silver.dim_conta.sk_conta
+Ref: silver.fato_pedido.sk_conta > silver.dim_conta.sk_conta
+Ref: silver.fato_pedido.sk_loja > silver.dim_loja.sk_loja
+Ref: silver.fato_pedido.sk_data > silver.dim_calendario.sk_data
+Ref: silver.fato_pedido_item.sk_pedido > silver.fato_pedido.sk_pedido
+Ref: silver.fato_pedido_item.sk_produto > silver.dim_produto.sk_produto
+Ref: silver.fato_pagamento.sk_pedido > silver.fato_pedido.sk_pedido
+Ref: silver.fato_pagamento.sk_forma_pagamento > silver.dim_forma_pagamento.sk_forma_pagamento
+Ref: silver.fato_evento_marketing.sk_contato > silver.dim_contato.sk_contato
+Ref: silver.bridge_conta_contato.sk_conta > silver.dim_conta.sk_conta
+Ref: silver.bridge_conta_contato.sk_contato > silver.dim_contato.sk_contato
+Ref: gold.fato_cliente_mes.sk_conta > silver.dim_conta.sk_conta
+
+Lineage {
+  silver.dim_conta < staging.crm_conta
+  silver.dim_produto < staging.catalogo_produto
+  silver.dim_contato < staging.crm_contato
+  silver.fato_pedido < staging.erp_pedido, staging.gateway_pagamento
+  silver.fato_pedido_item < staging.erp_pedido_item
+  silver.fato_pagamento < staging.gateway_pagamento
+  silver.fato_evento_marketing < staging.web_evento
+  gold.kpi_vendas_dia < silver.fato_pedido
+  gold.fato_cliente_mes < silver.fato_pedido, silver.fato_pagamento
+  gold.report_executivo < gold.kpi_vendas_dia, gold.fato_cliente_mes
+}
+
+LineageFields {
+  silver.dim_conta.conta_natural_id < staging.crm_conta.conta_id
+  silver.dim_conta.razao_social < staging.crm_conta.razao_social
+  silver.dim_conta.segmento < staging.crm_conta.segmento
+  silver.dim_conta.regiao < staging.crm_conta.regiao
+  silver.dim_produto.sku < staging.catalogo_produto.sku
+  silver.dim_produto.nome_produto < staging.catalogo_produto.nome_produto
+  silver.dim_produto.preco_lista < staging.catalogo_produto.preco_lista
+  silver.dim_contato.contato_natural_id < staging.crm_contato.contato_id
+  silver.dim_contato.nome < staging.crm_contato.nome
+  silver.dim_contato.email < staging.crm_contato.email
+  silver.fato_pedido.pedido_natural_id < staging.erp_pedido.pedido_id
+  silver.fato_pedido.valor_bruto < staging.erp_pedido.valor_bruto
+  silver.fato_pedido.status_pedido < staging.erp_pedido.status_pedido
+  silver.fato_pedido_item.seq_item < staging.erp_pedido_item.seq_item
+  silver.fato_pedido_item.quantidade < staging.erp_pedido_item.quantidade
+  silver.fato_pedido_item.preco_unitario < staging.erp_pedido_item.preco_unitario
+  silver.fato_pedido_item.desconto_pct < staging.erp_pedido_item.desconto_pct
+  silver.fato_pagamento.txn_natural_id < staging.gateway_pagamento.txn_id
+  silver.fato_pagamento.valor < staging.gateway_pagamento.valor
+  silver.fato_pagamento.status_pagamento < staging.gateway_pagamento.status_pagamento
+  silver.fato_evento_marketing.evento_natural_id < staging.web_evento.evento_id
+  silver.fato_evento_marketing.tipo_evento < staging.web_evento.tipo_evento
+  silver.fato_evento_marketing.url_pagina < staging.web_evento.url_pagina
+  gold.kpi_vendas_dia.receita_bruta < silver.fato_pedido.valor_bruto [note: 'SUM(valor_bruto) por dia']
+  gold.kpi_vendas_dia.total_pedidos < silver.fato_pedido.sk_pedido [note: 'COUNT DISTINCT']
+  gold.report_executivo.receita_consolidada < gold.kpi_vendas_dia.receita_bruta [note: 'rollup regional']
+  gold.report_executivo.pedidos < gold.kpi_vendas_dia.total_pedidos
+}
+
+TableGroup ingestao_oracle {
+  staging.erp_pedido
+  staging.erp_pedido_item
+  staging.crm_conta
+  staging.crm_contato
+  staging.catalogo_produto
+  staging.gateway_pagamento
+}
+TableGroup ingestao_web {
+  staging.web_evento
+}
+TableGroup dimensoes {
+  silver.dim_conta
+  silver.dim_produto
+  silver.dim_loja
+  silver.dim_forma_pagamento
+  silver.dim_calendario
+  silver.dim_contato
+}
+TableGroup fatos {
+  silver.fato_pedido
+  silver.fato_pedido_item
+  silver.fato_pagamento
+  silver.fato_evento_marketing
+}
+TableGroup bridge {
+  silver.bridge_conta_contato
+}
+TableGroup agregados {
+  gold.kpi_vendas_dia
+  gold.fato_cliente_mes
+}
+TableGroup reports {
+  gold.report_executivo
+}
+
+LayerGroup bronze [color: #b08d57] {
+  staging.erp_pedido
+  staging.erp_pedido_item
+  staging.crm_conta
+  staging.crm_contato
+  staging.catalogo_produto
+  staging.gateway_pagamento
+  staging.web_evento
+}
+LayerGroup prata [color: #9ca3af] {
+  silver.dim_conta
+  silver.dim_produto
+  silver.dim_loja
+  silver.dim_forma_pagamento
+  silver.dim_calendario
+  silver.dim_contato
+  silver.fato_pedido
+  silver.fato_pedido_item
+  silver.fato_pagamento
+  silver.fato_evento_marketing
+  silver.bridge_conta_contato
+}
+LayerGroup ouro [color: #d4af37] {
+  gold.kpi_vendas_dia
+  gold.fato_cliente_mes
+  gold.report_executivo
+}
+
+Records staging.erp_pedido(pedido_id, conta_id, loja_codigo, moeda, status_pedido, valor_bruto, criado_em) {
+  Note: 'Cabeçalho de pedidos exportado do ERP (granularidade pedido_id)'
+  10001, ACC-001, LJ-SP, BRL, FECHADO, 1250.00, 'TIMESTAMP '2024-03-01 09:15:00''
+  10002, ACC-002, LJ-RS, BRL, ABERTO, 389.90, 'TIMESTAMP '2024-03-02 11:40:00''
+}
+
+Records staging.erp_pedido_item(pedido_id, seq_item, sku, quantidade, preco_unitario, desconto_pct) {
+  Note: 'Itens de pedido (granularidade pedido_id + seq_item)'
+  10001, 1, SKU-A100, 2, 120.0000, 5.00
+  10001, 2, SKU-B200, 1, 450.0000, 0.00
+}
+
+Records staging.crm_conta(conta_id, razao_social, segmento, regiao, pais) {
+  Note: 'Contas comerciais (CRM)'
+  ACC-001, Acme Industria Ltda, Enterprise, Sudeste, BR
+  ACC-002, Beta Comercio SA, Mid-Market, Sul, BR
+}
+
+Records staging.crm_contato(contato_id, conta_id, nome, email, cargo) {
+  Note: 'Contatos por conta'
+  CT-001, ACC-001, Maria Souza, maria@acme.com.br, Compradora
+  CT-002, ACC-002, Joao Lima, joao@beta.com.br, Proprietario
+}
+
+Records staging.catalogo_produto(sku, nome_produto, categoria_n1, categoria_n2, preco_lista, ativo) {
+  Note: 'Catálogo de produtos (PIM)'
+  SKU-A100, Motor Industrial A100, Maquinas, Motores, 125.00, 1
+  SKU-B200, Painel Controle B200, Eletrica, Paineis, 480.00, 1
+}
+
+Records staging.gateway_pagamento(txn_id, pedido_id, valor, forma_pagamento, status_pagamento, pago_em) {
+  Note: 'Transações do gateway de pagamento'
+  TXN-001, 10001, 1196.50, CARTAO, CAPTURADO, 'TIMESTAMP '2024-03-01 10:05:00''
+}
+
+Records staging.web_evento(evento_id, sessao_id, email_contato, tipo_evento, url_pagina, ocorrido_em) {
+  Note: 'Eventos de navegação (Segment → landing pages)'
+  EV-001, SESS-9A1, maria@acme.com.br, page_view, /produtos/motores, 'TIMESTAMP '2024-03-01 08:50:00''
+}
+
+Records silver.dim_conta(sk_conta, conta_natural_id, razao_social, segmento, regiao, vigente, valido_de, dt_carga_silver) {
+  Note: 'Dimensão de conta (SCD tipo 2 simplificado)'
+  1, ACC-001, Acme Industria Ltda, Enterprise, Sudeste, 1, 'TIMESTAMP '2024-01-01'', SYSTIMESTAMP
+  2, ACC-002, Beta Comercio SA, Mid-Market, Sul, 1, 'TIMESTAMP '2024-01-01'', SYSTIMESTAMP
+}
+
+Records silver.dim_produto(sk_produto, sku, nome_produto, categoria_n1, categoria_n2, preco_lista, dt_carga_silver) {
+  Note: 'Dimensão de produto'
+  1, SKU-A100, Motor Industrial A100, Maquinas, Motores, 125.00, SYSTIMESTAMP
+  2, SKU-B200, Painel Controle B200, Eletrica, Paineis, 480.00, SYSTIMESTAMP
+}
+
+Records silver.dim_loja(sk_loja, codigo_loja, nome_loja, uf) {
+  Note: 'Dimensão de loja (de-para simples)'
+  1, LJ-SP, Loja Sao Paulo, SP
+  2, LJ-RS, Loja Porto Alegre, RS
+}
+
+Records silver.dim_forma_pagamento(sk_forma_pagamento, codigo, descricao) {
+  Note: 'Forma de pagamento (lookup)'
+  1, CARTAO, Cartao de credito
+  2, PIX, PIX instantaneo
+}
+
+Records silver.dim_calendario(sk_data, data_ref, ano, mes, dia) {
+  Note: 'Calendário (surrogate date key)'
+  20240301, 'DATE '2024-03-01'', 2024, 3, 1
+}
+
+Records silver.dim_contato {
+  Note: 'Contato (role-playing dim)'
+}
+
+Records silver.fato_pedido(sk_pedido, pedido_natural_id, sk_conta, sk_loja, sk_data, valor_bruto, status_pedido, dt_carga_silver) {
+  Note: 'Fato pedido (cabeçalho). Fan-in L1: ERP + pagamentos.'
+  1, 10001, 1, 1, 20240301, 1250.00, FECHADO, SYSTIMESTAMP
+}
+
+Records silver.fato_pedido_item {
+  Note: 'Fato item — tabela LARGA (52 colunas) para demonstrar scroll + FKs ancoradas'
+}
+
+Records silver.fato_pagamento {
+  Note: 'Fato pagamento (granularidade txn)'
+}
+
+Records silver.fato_evento_marketing {
+  Note: 'Eventos de marketing ligados a contatos'
+}
+
+Records silver.bridge_conta_contato {
+  Note: 'Ponte conta↔contato (muitos-para-muitos lógico)'
+}
+
+Records gold.kpi_vendas_dia(sk_data, total_pedidos, receita_bruta, ticket_medio, dt_carga_gold) {
+  Note: 'KPI diário de vendas (agregação sobre fato pedido)'
+  20240301, 2, 1639.90, 819.95, SYSTIMESTAMP
+}
+
+Records gold.fato_cliente_mes {
+  Note: 'Resumo mensal por conta (fan-in de pedido + pagamento)'
+}
+
+Records gold.report_executivo(periodo, regiao, segmento, receita_consolidada, pedidos) {
+  Note: 'Painel executivo — PK composta (periodo + regiao)'
+  'DATE '2024-03-01'', Sudeste, Enterprise, 1250.00, 1
+}
+
+Colors {
+  staging.erp_pedido: #b08d57
+  silver.fato_pedido: #00995d
+  silver.fato_pedido_item: #15803d
+  gold.kpi_vendas_dia: #d4af37
+  gold.report_executivo: #a16207
+  @ingestao_oracle: #b5651d
+  @ingestao_web: #475569
+  @dimensoes: #0e7490
+  @fatos: #15803d
+  @bridge: #6b21a8
+  @agregados: #d4af37
+  @reports: #b91c1c
+}
