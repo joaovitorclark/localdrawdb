@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Handle, Position, NodeResizeControl } from 'reactflow';
 import { useInteraction } from '../store/interaction';
@@ -26,6 +26,17 @@ function TableNodeImpl({ data }: { data: TableNodeData }) {
   const [infoRect, setInfoRect] = useState<DOMRect | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  const colorRef = useRef<HTMLSpanElement>(null);
+
+  // Fecha a paleta ao clicar fora (evita paleta "presa aberta").
+  useEffect(() => {
+    if (!palette) return;
+    const onDown = (e: MouseEvent) => {
+      if (colorRef.current && !colorRef.current.contains(e.target as Node)) setPalette(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [palette]);
 
   const color = data.headerColor;
   const meta = data.meta;
@@ -96,34 +107,37 @@ function TableNodeImpl({ data }: { data: TableNodeData }) {
           >
             ×
           </button>
-          <button
-            className="table-node__color"
-            title="Cor / camada da tabela"
-            onClick={(e) => {
-              e.stopPropagation();
-              setPalette((p) => !p);
-            }}
-          >
-            ●
-          </button>
-          {palette && (
-            <div className="color-palette" onClick={(e) => e.stopPropagation()}>
-              <div className="color-palette__row">
-                {TABLE_COLORS.map((c) => (
-                  <button key={c} style={{ background: c }} onClick={() => { actions.onSetColor(data.id, c); setPalette(false); }} />
-                ))}
-                <button className="color-reset" title="Sem cor (usar camada)" onClick={() => { actions.onSetColor(data.id, null); setPalette(false); }}>✕</button>
+          <span className="table-node__color-control" ref={colorRef}>
+            <button
+              type="button"
+              className="table-node__color"
+              title="Cor / camada da tabela"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPalette((p) => !p);
+              }}
+            >
+              ●
+            </button>
+            {palette && (
+              <div className="color-palette" onClick={(e) => e.stopPropagation()}>
+                <div className="color-palette__row">
+                  {TABLE_COLORS.map((c) => (
+                    <button key={c} type="button" style={{ background: c }} onClick={() => { actions.onSetColor(data.id, c); setPalette(false); }} />
+                  ))}
+                  <button type="button" className="color-reset" title="Sem cor (usar camada)" onClick={() => { actions.onSetColor(data.id, null); setPalette(false); }}>✕</button>
+                </div>
+                <div className="color-palette__layers">
+                  {actions.layers.map((l) => (
+                    <button key={l.id} type="button" className="layer-pick" onClick={() => { actions.onSetLayer(data.id, l.id); setPalette(false); }}>
+                      <span className="layer-dot" style={{ background: l.color }} /> {l.name}
+                    </button>
+                  ))}
+                  <button type="button" className="layer-pick" onClick={() => { actions.onSetLayer(data.id, null); setPalette(false); }}>sem camada</button>
+                </div>
               </div>
-              <div className="color-palette__layers">
-                {actions.layers.map((l) => (
-                  <button key={l.id} className="layer-pick" onClick={() => { actions.onSetLayer(data.id, l.id); setPalette(false); }}>
-                    <span className="layer-dot" style={{ background: l.color }} /> {l.name}
-                  </button>
-                ))}
-                <button className="layer-pick" onClick={() => { actions.onSetLayer(data.id, null); setPalette(false); }}>sem camada</button>
-              </div>
-            </div>
-          )}
+            )}
+          </span>
         </div>
 
         {data.externalLinks?.length ? (

@@ -29,23 +29,48 @@ import { MINIMAP_MAX_TABLES, SKIP_INITIAL_FIT_TABLES } from './scaleLimits';
 const isMacOs = () =>
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.userAgent);
 
-/** Regras CSS por id relacionado — evita `setNodes` em hover/seleção (Fase 2 perf). */
-function CanvasFocusStyles({ related }: { related: Set<string> | null }) {
+/**
+ * Regras CSS por id relacionado — evita `setNodes` em hover/seleção (Fase 2 perf).
+ * Diferencia a seleção pra não parecer sobreposta: a tabela em foco tem contorno forte
+ * (sólido = selecionada; tracejado = tabela da coluna selecionada, #7b); os vizinhos
+ * relacionados (FK/linhagem) só ficam sem esmaecer, com um contorno fino secundário.
+ */
+function CanvasFocusStyles({
+  focus,
+  related,
+  columnFocus,
+}: {
+  focus: Set<string>;
+  related: Set<string> | null;
+  columnFocus: boolean;
+}) {
   const css = useMemo(() => {
     if (!related?.size) return '';
     const rules: string[] = [];
     for (const id of related) {
       const esc = CSS.escape(id);
+      rules.push(`.canvas-wrap--focus .react-flow__node[data-id="${esc}"] { opacity: 1; }`);
+      if (!focus.has(id)) {
+        // Vizinho relacionado: contorno fino, secundário — não parece "selecionado".
+        rules.push(
+          `.canvas-wrap--focus .react-flow__node[data-id="${esc}"] .table-node {`,
+          '  outline: 1px solid var(--brand-green);',
+          '  outline-offset: 1px;',
+          '}',
+        );
+      }
+    }
+    for (const id of focus) {
+      const esc = CSS.escape(id);
       rules.push(
-        `.canvas-wrap--focus .react-flow__node[data-id="${esc}"] { opacity: 1; }`,
         `.canvas-wrap--focus .react-flow__node[data-id="${esc}"] .table-node {`,
-        '  outline: 2px solid var(--brand-green);',
+        `  outline: 2px ${columnFocus ? 'dashed' : 'solid'} var(--brand-green);`,
         '  outline-offset: 1px;',
         '}',
       );
     }
     return rules.join('\n');
-  }, [related]);
+  }, [focus, related, columnFocus]);
   if (!css) return null;
   return <style data-canvas-focus="">{css}</style>;
 }
@@ -227,6 +252,8 @@ export function Canvas(props: Props) {
     if (hovered) return [hovered];
     return [];
   }, [selectedTableIds, selectedColumn, focusedFieldMapping, fieldLineageVisible, selectedTable, hovered]);
+
+  const focusSet = useMemo(() => new Set(focusTables), [focusTables]);
 
   const aggregatedCrossLinks = useMemo(
     () => aggregateCrossLinks(crossRefs, externalStubs),
@@ -467,7 +494,7 @@ export function Canvas(props: Props) {
 
   return (
     <div className={`canvas-wrap${related?.size ? ' canvas-wrap--focus' : ''}`}>
-      <CanvasFocusStyles related={related} />
+      <CanvasFocusStyles focus={focusSet} related={related} columnFocus={!!selectedColumn} />
       {staleWarning && (
         <div className="canvas-stale-banner" role="status">
           Canvas mostra último modelo válido — corrija o DBML no editor

@@ -71,6 +71,7 @@ export const useInteraction = create<InteractionState>((set) => ({
       selectedTable: id,
       selectedTableIds: id ? [id] : [],
       selectedGroup: null,
+      selectedColumn: null,
     }),
   setSelectedTableIds: (ids) =>
     set({
@@ -80,7 +81,7 @@ export const useInteraction = create<InteractionState>((set) => ({
     }),
   selectedGroup: null,
   selectGroup: (id) =>
-    set({ selectedGroup: id, selectedTable: null, selectedTableIds: [] }),
+    set({ selectedGroup: id, selectedTable: null, selectedTableIds: [], selectedColumn: null }),
   clearCanvasSelection: () =>
     set({ selectedTable: null, selectedTableIds: [], selectedGroup: null, focusedFieldMapping: null }),
 
