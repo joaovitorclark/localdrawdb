@@ -3,6 +3,7 @@
 
 # Artefatos proprietários / acoplados a domínio local (nunca versionar)
 project.dbml
+!examples/demo_lakehouse_oracle/project.dbml
 examples/input/autorizacao*.sql
 scripts/generate-lineage-fields.ts
 

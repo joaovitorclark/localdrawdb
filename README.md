@@ -83,7 +83,7 @@ npm run dev -- vendas rh           # só esses
 - **Undo/Redo** (↶ ↷ ou Cmd/Ctrl+Z e Cmd/Ctrl+Shift+Z): histórico global (texto + canvas).
 - **Organize**: reordena o DBML em `tabelas → refs → records → lineage` (preserva comentários).
 - **+ Tabela / + Metadados**: nova tabela ou snippet de colunas lakehouse padrão.
-- **Importar (input/)**: mescla `.sql` de `data/input/` (Spark, Oracle, `@layer`/`@group`/`@note`/`@fk`, `COMMENT ON`, PK composta). Exemplo versionado em [`examples/input/`](examples/input/) — copie para `data/input/`.
+- **Importar (input/)**: mescla `.sql` de `data/input/` (Spark, Oracle, `@layer`/`@group`/`@note`/`@fk`, `COMMENT ON`, PK composta). Exemplos versionados em [`examples/input/`](examples/input/) — copie para `data/input/` ou use o pacote [`examples/demo_lakehouse_oracle/`](examples/demo_lakehouse_oracle/) (SQL + DBML + canvas prontos).
 - **Exportar** (menu + botão): escolha o formato e gera artefatos em `data/output/`:
   - **LocalDrawDB (Spark/Oracle)** — SQL reimportável com metadados (`@map`, `@layer`, `INSERT`)
   - **Spark DDL** — `CREATE TABLE` Delta por schema
@@ -121,7 +121,7 @@ Blocos `Records` preservados; painel **Dados (amostra)** filtra por tabela/grupo
 
 ## Contrato de dados
 
-O repositório público contém **apenas** fixtures genéricas em [`examples/input/`](examples/input/) — principalmente [`demo_lakehouse_complex.sql`](examples/input/demo_lakehouse_complex.sql). Não versionamos modelos ou SQLs de domínios proprietários (ex.: autorização/TISS).
+O repositório público contém **apenas** a fixture genérica [`examples/input/demo_lakehouse_oracle.sql`](examples/input/demo_lakehouse_oracle.sql) (+ pacote [`examples/demo_lakehouse_oracle/`](examples/demo_lakehouse_oracle/) com DBML e canvas). Não versionamos modelos ou SQLs de domínios proprietários.
 
 - **Copie** os exemplos para `data/input/` antes de importar.
 - **Seu modelo** vive em `data/project.dbml` + `data/canvas.json` (gitignored).
@@ -130,12 +130,16 @@ O repositório público contém **apenas** fixtures genéricas em [`examples/inp
 ## Pasta `data/` (nunca versionada)
 
 ```
-data/
-├─ input/         # seus .sql locais (não versionados)
-examples/input/   # demo_lakehouse.sql, demo_lakehouse_complex.sql + README (copiar para data/input/)
-├─ output/        # localdrawdb/, spark/, oracle/, postgres/, dbt, erwin, Mermaid, PNG
-├─ project.dbml   # fonte de verdade do modelo
-└─ canvas.json    # posições, cores, grupos colapsados
+data/                          # gitignored — seu workspace local
+├─ projects/<slug>/
+│  ├─ input/                   # .sql para Importar (input/)
+│  ├─ project.dbml             # fonte de verdade do modelo
+│  └─ canvas.json              # posições, cores, páginas, grupos colapsados
+└─ output/                     # exports (spark/, oracle/, dbt, PNG, …)
+
+examples/                      # versionado — demos educativas
+├─ input/                      # demo_lakehouse*.sql → copiar para data/…/input/
+└─ demo_lakehouse_oracle/      # SQL + project.dbml + canvas.json prontos
 ```
 
 ## Exports

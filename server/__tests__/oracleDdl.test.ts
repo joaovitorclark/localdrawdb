@@ -8,7 +8,7 @@ import { sqlToModel } from '../sqlImport.ts';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const demoSql = readFileSync(
-  path.join(dir, '..', '..', 'examples', 'input', 'demo_lakehouse.sql'),
+  path.join(dir, '..', '..', 'examples', 'input', 'demo_lakehouse_oracle.sql'),
   'utf8',
 );
 
@@ -42,10 +42,10 @@ describe('Oracle DDL limpo', () => {
     expect(ddl).toContain('FOREIGN KEY (customer_id) REFERENCES loja.cliente (id)');
   });
 
-  it('demo_lakehouse preserva PK composta sem metadados LocalDrawDB', () => {
+  it('demo_lakehouse_oracle preserva PK composta sem metadados LocalDrawDB', () => {
     const model = sqlToModel(demoSql);
     const agg = modelToOracleDDL(model);
-    expect(agg).toContain('PRIMARY KEY (period, region)');
+    expect(agg).toContain('PRIMARY KEY (periodo, regiao)');
     expect(agg).not.toContain('-- @layer');
   });
 });

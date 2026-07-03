@@ -9,7 +9,7 @@ import { parseDbml } from '../../src/dsl/parse.ts';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const demoSql = readFileSync(
-  path.join(dir, '..', '..', 'examples', 'input', 'demo_lakehouse.sql'),
+  path.join(dir, '..', '..', 'examples', 'input', 'demo_lakehouse_oracle.sql'),
   'utf8',
 );
 
@@ -18,16 +18,16 @@ describe('lineage DBML round-trip', () => {
     const model = sqlToModel(demoSql);
     const dbml = modelToDbml(model);
     expect(dbml).toContain('Lineage {');
-    expect(dbml).toContain('silver.dim_customer < raw.customers');
+    expect(dbml).toContain('silver.dim_conta < staging.crm_conta');
     expect(dbml).toContain('LineageFields {');
-    expect(dbml).toContain('silver.dim_customer.natural_id < raw.customers.id');
-    expect(dbml).toContain("note: 'SUM(total) por periodo/regiao'");
+    expect(dbml).toContain('silver.dim_conta.conta_natural_id < staging.crm_conta.conta_id');
+    expect(dbml).toContain("note: 'SUM(valor_bruto) por dia'");
     const parsed = parseDbml(dbml);
     expect(parsed.error).toBeUndefined();
-    expect(parsed.lineage.some((l) => l.target === 'silver.dim_customer')).toBe(true);
+    expect(parsed.lineage.some((l) => l.target === 'silver.dim_conta')).toBe(true);
     expect(
       parsed.lineageFields.some(
-        (f) => f.targetTable === 'silver.fact_orders' && f.targetColumn === 'order_id',
+        (f) => f.targetTable === 'silver.fato_pedido' && f.targetColumn === 'pedido_natural_id',
       ),
     ).toBe(true);
   });
@@ -67,26 +67,26 @@ LineageFields {
 });
 
 describe('lineage SQL round-trip', () => {
-  it('demo_lakehouse import → export → reimport preserva L1/L2', () => {
+  it('demo_lakehouse_oracle import → export → reimport preserva L1/L2', () => {
     const model0 = sqlToModel(demoSql);
     expect(model0.lineage?.length).toBeGreaterThan(0);
     expect(model0.lineageFields?.length).toBeGreaterThan(0);
 
-    const exported = modelToInputSql(model0, 'spark');
-    expect(exported).toContain('-- @origen: raw.customers');
-    expect(exported).toContain('-- @lineage silver.dim_customer');
-    expect(exported).toContain('--   natural_id <- raw.customers.id');
+    const exported = modelToInputSql(model0, 'oracle');
+    expect(exported).toContain('-- @origen: staging.crm_conta');
+    expect(exported).toContain('-- @lineage silver.dim_conta');
+    expect(exported).toContain('--   conta_natural_id <- staging.crm_conta.conta_id');
 
     const model1 = sqlToModel(exported);
-    const dimLineage = model1.lineage?.find((l) => l.target === 'silver.dim_customer');
-    expect(dimLineage?.sources).toContain('raw.customers');
+    const dimLineage = model1.lineage?.find((l) => l.target === 'silver.dim_conta');
+    expect(dimLineage?.sources).toContain('staging.crm_conta');
     expect(
       model1.lineageFields?.some(
         (f) =>
-          f.targetTable === 'silver.dim_customer' &&
-          f.targetColumn === 'natural_id' &&
-          f.sourceTable === 'raw.customers' &&
-          f.sourceColumn === 'id',
+          f.targetTable === 'silver.dim_conta' &&
+          f.targetColumn === 'conta_natural_id' &&
+          f.sourceTable === 'staging.crm_conta' &&
+          f.sourceColumn === 'conta_id',
       ),
     ).toBe(true);
 
