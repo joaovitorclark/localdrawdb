@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useInteraction } from '../store/interaction';
-import { getColumnSettings, setColumnSetting, type ColSettings } from '../dsl/edit';
+import { getColumnSettings, setColumnColor, setColumnSetting, type ColSettings } from '../dsl/edit';
 import type { TableView } from '../dsl/parse';
 
 type Props = {
@@ -12,6 +12,13 @@ type Props = {
 };
 
 const COLLAPSE_KEY = 'localdrawdb.columnPanelCollapsed';
+
+/** Cores pré-definidas pra pintar o nome do campo (semáforo) + custom. */
+const FIELD_COLORS = [
+  { label: 'Vermelho', value: '#dc2626' },
+  { label: 'Amarelo', value: '#d4af37' },
+  { label: 'Verde', value: '#15803d' },
+];
 
 function loadCollapsed(): boolean {
   try {
@@ -134,6 +141,36 @@ export function ColumnPanel({ dbml, tables, onApply, onRenameColumn, onGoToColum
               Editar no DBML
             </button>
           )}
+          <div className="column-panel__field">
+            Cor do nome
+            <div className="column-panel__colors">
+              {FIELD_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  className={`col-color-dot${selCol?.color === c.value ? ' is-active' : ''}`}
+                  style={{ background: c.value }}
+                  title={c.label}
+                  onClick={() => onApply(setColumnColor(dbml, sel.table, sel.column, c.value))}
+                />
+              ))}
+              <input
+                type="color"
+                className="col-color-custom"
+                value={selCol?.color ?? '#888888'}
+                title="Cor personalizada"
+                onChange={(e) => onApply(setColumnColor(dbml, sel.table, sel.column, e.target.value))}
+              />
+              <button
+                type="button"
+                className="col-color-clear"
+                title="Sem cor"
+                onClick={() => onApply(setColumnColor(dbml, sel.table, sel.column, null))}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
           <label className="column-panel__row">
             <input type="checkbox" checked={!!settings.pk} onChange={(e) => apply({ pk: e.target.checked })} />
             Primary key

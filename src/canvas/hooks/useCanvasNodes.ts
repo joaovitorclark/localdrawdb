@@ -36,7 +36,7 @@ const SEP3 = '\u0003';
 const SEP4 = '\u0004';
 
 function colSig(c: ColumnView): string {
-  return [c.name, c.type, c.pk ? '1' : '0', c.notNull ? '1' : '0', c.note ?? ''].join(SEP1);
+  return [c.name, c.type, c.pk ? '1' : '0', c.notNull ? '1' : '0', c.note ?? '', c.color ?? ''].join(SEP1);
 }
 
 function metaSig(m: TableMeta): string {

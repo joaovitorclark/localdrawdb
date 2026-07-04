@@ -717,3 +717,13 @@ export function setTableColor(src: string, tableId: string, color: string | null
 export function setGroupColor(src: string, group: string, color: string | null): string {
   return setColorEntry(src, `@${group}`, color);
 }
+
+/** Cor do nome de uma coluna no bloco Colors {} (chave `tabela.coluna`, 3 partes). */
+export function setColumnColor(
+  src: string,
+  table: string,
+  column: string,
+  color: string | null,
+): string {
+  return setColorEntry(src, `${table}.${column}`, color);
+}
