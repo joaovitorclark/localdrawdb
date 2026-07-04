@@ -493,14 +493,24 @@ body {
   opacity: 0.8;
   font-weight: 400;
 }
+.table-node__color-control {
+  display: inline-flex;
+  align-items: center;
+}
 .table-node__delete,
 .table-node__color {
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
-  font-size: 12px;
-  padding: 0 2px;
+  font-size: 14px;
+  padding: 2px 5px;
+}
+.table-node__color:focus-visible,
+.table-node__delete:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  border-radius: 3px;
 }
 .table-node__delete {
   font-size: 14px;
@@ -522,21 +532,29 @@ body {
   background: #fff;
   border: 1px solid #c4ccd6;
   border-radius: 6px;
-  padding: 6px;
+  padding: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-  min-width: 150px;
+  width: 212px;
+  box-sizing: border-box;
 }
 .color-palette__row {
   display: flex;
-  gap: 5px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 .color-palette__row button {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
   border: 1px solid #d0d7e2;
   cursor: pointer;
+}
+.color-palette__row button:hover {
+  transform: scale(1.08);
+}
+.color-palette__row button:focus-visible {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
 }
 .color-palette__row .color-reset {
   background: #f3f6fa;
@@ -752,18 +770,22 @@ body {
   border: none;
   color: #fff;
   cursor: pointer;
-  font-size: 11px;
-  padding: 0 1px;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 5px;
   opacity: 0.85;
   pointer-events: auto;
 }
 .group-node__color:hover {
   opacity: 1;
 }
+.group-node__color:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  border-radius: 3px;
+}
 .color-palette--group {
-  left: 0;
   right: auto;
-  top: 22px;
   pointer-events: auto;
 }
 .group-node.is-collapsed {

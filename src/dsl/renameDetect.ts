@@ -40,7 +40,14 @@ export type TableRename = { kind: 'table'; oldId: string; newId: string };
 export type ColumnRename = { kind: 'column'; table: string; oldCol: string; newCol: string };
 export type DetectedRename = TableRename | ColumnRename;
 
-/** Detecta renomeações estruturais entre dois snapshots do DBML (edição livre no editor). */
+/**
+ * Detecta renomeações estruturais entre dois snapshots do DBML (edição livre no editor).
+ *
+ * Casa entidades por IDENTIDADE (nome), NUNCA por posição (linha/índice). Colar, inserir
+ * ou apagar linhas desloca posições e NÃO deve ser lido como renome — só é renome quando
+ * exatamente uma entidade some e uma aparece, com o resto estável. Nomes duplicados
+ * transitórios (copiar tabela/coluna) são ambíguos e suprimem a detecção.
+ */
 export function detectRenames(prevDbml: string, nextDbml: string): DetectedRename[] {
   if (prevDbml === nextDbml) return [];
 
@@ -48,37 +55,59 @@ export function detectRenames(prevDbml: string, nextDbml: string): DetectedRenam
   const nextTables = splitDbmlBlocks(nextDbml).filter((b) => b.type === 'table');
   const renames: DetectedRename[] = [];
 
-  const byLinePrev = new Map(prevTables.map((b) => [b.lineStart ?? -1, b]));
-  const byLineNext = new Map(nextTables.map((b) => [b.lineStart ?? -1, b]));
+  type Block = (typeof prevTables)[number];
+  // Indexa blocos por id de tabela; marca ids duplicados (ambíguos — não adivinhar).
+  const index = (blocks: Block[]) => {
+    const byId = new Map<string, Block>();
+    const dup = new Set<string>();
+    for (const b of blocks) {
+      const id = tableIdFromBlock(b.name);
+      if (!id) continue;
+      if (byId.has(id)) dup.add(id);
+      else byId.set(id, b);
+    }
+    return { byId, dup };
+  };
+  const prev = index(prevTables);
+  const next = index(nextTables);
 
-  const lineKeys = [...new Set([...byLinePrev.keys(), ...byLineNext.keys()])].filter((k) => k >= 0);
-
-  for (const lineStart of lineKeys) {
-    const pb = byLinePrev.get(lineStart);
-    const nb = byLineNext.get(lineStart);
-    if (!pb || !nb) continue;
-
-    const oldId = tableIdFromBlock(pb.name);
-    const newId = tableIdFromBlock(nb.name);
-    const prevFields = tableFields(pb.text);
-    const nextFields = tableFields(nb.text);
-
-    if (oldId !== newId) {
-      if (!isCompleteTableId(oldId) || !isCompleteTableId(newId)) continue;
-      const prevNames = prevFields.map((f) => f.name);
-      const nextNames = nextFields.map((f) => f.name);
+  // --- Renome de tabela: exatamente 1 id completo some + 1 aparece, com colunas semelhantes. ---
+  const removedIds = [...prev.byId.keys()].filter((id) => !next.byId.has(id) && isCompleteTableId(id));
+  const addedIds = [...next.byId.keys()].filter((id) => !prev.byId.has(id) && isCompleteTableId(id));
+  if (removedIds.length === 1 && addedIds.length === 1) {
+    const oldId = removedIds[0];
+    const newId = addedIds[0];
+    // Não renomeia se algum lado for ambíguo (nome duplicado) ou criaria colisão de nome.
+    if (!prev.dup.has(oldId) && !next.dup.has(newId) && !prev.byId.has(newId)) {
+      const prevNames = tableFields(prev.byId.get(oldId)!.text).map((f) => f.name);
+      const nextNames = tableFields(next.byId.get(newId)!.text).map((f) => f.name);
       if (columnOverlap(prevNames, nextNames) >= 0.8) {
         renames.push({ kind: 'table', oldId, newId });
       }
     }
+  }
 
-    const tableId = newId || oldId;
-    const len = Math.min(prevFields.length, nextFields.length);
-    for (let i = 0; i < len; i++) {
-      const pf = prevFields[i];
-      const nf = nextFields[i];
-      if (pf.name !== nf.name && pf.sig === nf.sig) {
-        renames.push({ kind: 'column', table: tableId, oldCol: pf.name, newCol: nf.name });
+  // --- Renome de coluna: só em tabelas presentes (por id) nos DOIS snapshots, não ambíguas. ---
+  for (const [id, pb] of prev.byId) {
+    const nb = next.byId.get(id);
+    if (!nb) continue;
+    if (prev.dup.has(id) || next.dup.has(id)) continue; // id ambíguo → não adivinha
+    const prevFields = tableFields(pb.text);
+    const nextFields = tableFields(nb.text);
+    const prevNames = prevFields.map((f) => f.name);
+    const nextNames = nextFields.map((f) => f.name);
+    const prevSet = new Set(prevNames);
+    const nextSet = new Set(nextNames);
+    const removedCols = prevNames.filter((n) => !nextSet.has(n));
+    const addedCols = nextNames.filter((n) => !prevSet.has(n));
+    // Renome só quando exatamente 1 coluna sai e 1 entra (resto estável) e a assinatura bate.
+    if (removedCols.length === 1 && addedCols.length === 1) {
+      const oldCol = removedCols[0];
+      const newCol = addedCols[0];
+      const pf = prevFields.find((f) => f.name === oldCol);
+      const nf = nextFields.find((f) => f.name === newCol);
+      if (pf && nf && pf.sig === nf.sig) {
+        renames.push({ kind: 'column', table: id, oldCol, newCol });
       }
     }
   }
