@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useInteraction } from '../store/interaction';
 import { getColumnSettings, setColumnColor, setColumnSetting, type ColSettings } from '../dsl/edit';
-import type { TableView } from '../dsl/parse';
+import type { ParsedFieldLineage, TableView } from '../dsl/parse';
+import { ColumnMappings } from './ColumnMappings';
 
 type Props = {
   dbml: string;
@@ -9,6 +10,13 @@ type Props = {
   onApply: (next: string) => void;
   onRenameColumn?: (table: string, oldName: string, newName: string) => void;
   onGoToColumn?: (table: string, column: string) => void;
+  mappings: ParsedFieldLineage[];
+  onAddMapping: (sourceTable: string, sourceColumn: string, targetColumn: string, note?: string, ref?: string) => void;
+  onUpdateMapping: (
+    prev: { sourceTable: string; sourceColumn: string; targetTable: string; targetColumn: string },
+    next: { sourceTable: string; sourceColumn: string; targetColumn: string; note?: string; ref?: string },
+  ) => void;
+  onRemoveMapping: (sourceTable: string, sourceColumn: string, targetColumn: string) => void;
 };
 
 const COLLAPSE_KEY = 'localdrawdb.columnPanelCollapsed';
@@ -28,7 +36,17 @@ function loadCollapsed(): boolean {
   }
 }
 
-export function ColumnPanel({ dbml, tables, onApply, onRenameColumn, onGoToColumn }: Props) {
+export function ColumnPanel({
+  dbml,
+  tables,
+  onApply,
+  onRenameColumn,
+  onGoToColumn,
+  mappings,
+  onAddMapping,
+  onUpdateMapping,
+  onRemoveMapping,
+}: Props) {
   const sel = useInteraction((s) => s.selectedColumn);
   const selectColumn = useInteraction((s) => s.selectColumn);
   const [nameDraft, setNameDraft] = useState('');
@@ -225,6 +243,15 @@ export function ColumnPanel({ dbml, tables, onApply, onRenameColumn, onGoToColum
               </ul>
             </div>
           )}
+          <ColumnMappings
+            tables={tables}
+            mappings={mappings}
+            targetTable={sel.table}
+            targetColumn={sel.column}
+            onAdd={onAddMapping}
+            onUpdate={onUpdateMapping}
+            onRemove={onRemoveMapping}
+          />
         </>
       )}
     </div>

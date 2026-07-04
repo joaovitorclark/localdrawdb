@@ -825,6 +825,27 @@ body {
   color: #8b98a5;
   cursor: pointer;
 }
+
+/* Mapeamentos L2 unificados no menu do campo (ColumnPanel) */
+.column-panel__mappings {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+.column-panel__mappings-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.column-panel__mappings-count {
+  background: #eef2f8;
+  border-radius: 10px;
+  padding: 0 7px;
+  font-size: 11px;
+  color: #5b6b7f;
+}
 .group-node.is-collapsed {
   background: rgba(28, 58, 107, 0.12);
   border-style: solid;
