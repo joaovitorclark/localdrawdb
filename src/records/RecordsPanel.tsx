@@ -3,6 +3,7 @@ import type { ParsedRecords } from '../dsl/records';
 import { getColumnSettings, setColumnSetting, setTableOrRecordsNote } from '../dsl/edit';
 import { useInteraction } from '../store/interaction';
 import type { RefView, TableView } from '../dsl/parse';
+import { useCollapsePersist } from '../hooks/useCollapsePersist';
 
 type Props = {
   records: ParsedRecords[];
@@ -64,7 +65,8 @@ function NoteField({
 }
 
 export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
-  const [open, setOpen] = useState(true);
+  const [collapsed, toggleCollapsed] = useCollapsePersist('ldb.panel.records', true);
+  const open = !collapsed;
   const selectedTable = useInteraction((s) => s.selectedTable);
   const selectedColumn = useInteraction((s) => s.selectedColumn);
   const selectedGroup = useInteraction((s) => s.selectedGroup);
@@ -144,7 +146,7 @@ export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
 
   return (
     <div className={`records-panel ${open ? 'is-open' : ''}`}>
-      <button className="records-panel__toggle" onClick={() => setOpen((o) => !o)}>
+      <button className="records-panel__toggle" onClick={toggleCollapsed}>
         {open ? '▾' : '▸'} Dados (amostra) · {Math.max(panelCount, 1)} tabela(s)
       </button>
       {open && (
