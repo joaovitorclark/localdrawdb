@@ -1,4 +1,4 @@
-import { splitDbmlBlocks } from './blocks';
+import { splitDbmlBlocks, normalizeEol } from './blocks';
 import { isCompleteTableId } from './edit';
 
 const stripQuotes = (s: string) => s.replace(/["`]/g, '').trim();
@@ -49,6 +49,11 @@ export type DetectedRename = TableRename | ColumnRename;
  * transitórios (copiar tabela/coluna) são ambíguos e suprimem a detecção.
  */
 export function detectRenames(prevDbml: string, nextDbml: string): DetectedRename[] {
+  // CRLF-safe: normaliza EOL antes de comparar. Sem isso, comparar `committed` (que pode
+  // vir com CRLF do arquivo no Windows) contra `buffer` (LF do CodeMirror) faz o diff
+  // linha-a-linha falhar silenciosamente.
+  prevDbml = normalizeEol(prevDbml);
+  nextDbml = normalizeEol(nextDbml);
   if (prevDbml === nextDbml) return [];
 
   const prevTables = splitDbmlBlocks(prevDbml).filter((b) => b.type === 'table');

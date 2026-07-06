@@ -5,6 +5,7 @@ import type { Node } from 'reactflow';
 import type { ColumnView, ParseResult, TableView } from '../../dsl/parse';
 import type { ExternalLinkBadge, TableMeta, TableNodeData } from '../actions';
 import type { ExternalGroupStub } from '../pageFilter';
+import type { TableSize } from '../../api';
 import { nodeHeight, nodeWidth } from '../nodeMetrics';
 export type Positions = Record<string, { x: number; y: number }>;
 
@@ -127,7 +128,7 @@ export function useCanvasNodes(
   nodeExtras: NodeExtras,
   externalStubs: ExternalGroupStub[] = [],
   selectedTableIds: string[] = [],
-  sizes: Record<string, number> = {},
+  sizes: Record<string, TableSize> = {},
 ): void {
   // Cache de `data` por id: preserva a identidade do objeto enquanto a assinatura de
   // conteúdo não muda, permitindo que `React.memo(TableNode)` pule re-renders das
@@ -175,7 +176,8 @@ export function useCanvasNodes(
           hidden: opts.hiddenTables.has(t.id),
           style: {
             ...(opts.dimmedTables.has(t.id) ? { opacity: 0.35 } : {}),
-            ...(sizes[t.id] ? { width: sizes[t.id] } : {}),
+            ...(sizes[t.id]?.width != null ? { width: sizes[t.id].width } : {}),
+            ...(sizes[t.id]?.height != null ? { height: sizes[t.id].height } : {}),
           },
         };
       });

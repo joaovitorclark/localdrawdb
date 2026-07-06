@@ -30,8 +30,8 @@ export type CanvasActions = {
   onSetColor: (tableId: string, color: string | null) => void;
   /** Cor da caixa de um TableGroup. */
   onSetGroupColor: (group: string, color: string | null) => void;
-  /** Largura definida ao redimensionar a tabela (arrastar o canto). */
-  onResizeTable: (tableId: string, width: number) => void;
+  /** Dimensões ao redimensionar a tabela (arrastar o canto inferior-direito). */
+  onResizeTable: (tableId: string, width: number, height?: number) => void;
   // layers
   layerOf: (tableId: string) => string | undefined;
   layerColorOf: (layerId?: string) => string | undefined;

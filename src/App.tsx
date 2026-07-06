@@ -8,6 +8,7 @@ import { organize } from './dsl/organize';
 import { autolayoutLineagePositions, autolayoutPositions } from './canvas/autolayout';
 import { defaultTablePosition } from './canvas/defaultTablePosition';
 import { ProblemsPanel } from './canvas/ProblemsPanel';
+import { StatusLog, type StatusLogEntry } from './canvas/StatusLog';
 import {
   appendRef, removeRef, removeTable, renameColumnAllRefs, renameTable, addColumn, setTableLayer, addLayerGroup,
   addLineageEntry, removeLineageEntry, addFieldLineageEntry, removeFieldLineageEntry, updateFieldLineageEntry,
@@ -42,7 +43,7 @@ import { ProjectSwitcher } from './ProjectSwitcher';
 import { pinnedCreatedMessage } from './projectMessages';
 import { exportInputL2Warning } from './exportWarnings';
 import * as api from './api';
-import type { CanvasPage, LineageLink, ProjectMeta } from './api';
+import type { CanvasPage, LineageLink, ProjectMeta, TableSize } from './api';
 
 type Positions = Record<string, { x: number; y: number }>;
 type Colors = Record<string, string>;
@@ -150,7 +151,7 @@ function applyRenames(
 export default function App() {
   const [dbml, setDbml] = useState('');
   const [positions, setPositions] = useState<Positions>({});
-  const [sizes, setSizes] = useState<Record<string, number>>({});
+  const [sizes, setSizes] = useState<Record<string, TableSize>>({});
   const [colors, setColors] = useState<Colors>({});
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
   const [canvasPages, setCanvasPages] = useState<CanvasPage[]>([allTablesPage()]);
@@ -158,6 +159,12 @@ export default function App() {
   const [pageWizardOpen, setPageWizardOpen] = useState(false);
   const [pageWizardTableCount, setPageWizardTableCount] = useState(0);
   const [status, setStatus] = useState('Carregando…');
+  // v15-04: histórico de status (ring buffer dos últimos 100) para o dropdown de logs.
+  const [logs, setLogs] = useState<StatusLogEntry[]>([]);
+  const pushStatus = useCallback((msg: string) => {
+    setStatus(msg);
+    if (msg) setLogs((l) => [{ ts: Date.now(), msg }, ...l].slice(0, 100));
+  }, []);
   const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
   const [autoSave, setAutoSave] = useState(false);
   const [focusTableId, setFocusTableId] = useState<string | null>(null);
@@ -237,7 +244,7 @@ export default function App() {
         startTransition(() => {
           setDbml(dbml0);
           setPositions(pos0);
-          setSizes(p.canvas?.sizes ?? {});
+          setSizes(api.normalizeSizes(p.canvas?.sizes));
           setColors(col0);
           setCollapsedGroups(p.canvas?.collapsedGroups ?? []);
           setCanvasPages(pages0);
@@ -246,7 +253,7 @@ export default function App() {
         prevDbmlRef.current = dbml0;
         baselineRef.current = { dbml: dbml0, positions: pos0, colors: col0 };
         const n = parsed0.tables.length;
-        setStatus(
+        pushStatus(
           n > PAGE_WIZARD_THRESHOLD && active0.length === 0
             ? `${n} tabelas carregadas — marque assuntos no painel Páginas`
             : n >= LARGE_DIAGRAM_HINT
@@ -266,17 +273,17 @@ export default function App() {
             setDbml(dbml0);
             prevDbmlRef.current = dbml0;
             setPositions(pos0);
-            setSizes(p.canvas?.sizes ?? {});
+            setSizes(api.normalizeSizes(p.canvas?.sizes));
             setColors(col0);
             setCollapsedGroups(p.canvas?.collapsedGroups ?? []);
             baselineRef.current = { dbml: dbml0, positions: pos0, colors: col0 };
-            setStatus('Pronto');
+            pushStatus('Pronto');
             setSaveState('saved');
           })
           .catch(() => {
             setDbml(SAMPLE);
             baselineRef.current = { dbml: SAMPLE, positions: {}, colors: {} };
-            setStatus('Backend offline — editando localmente');
+            pushStatus('Backend offline — editando localmente');
             setSaveState('saved');
           });
       })
@@ -584,9 +591,9 @@ export default function App() {
     prevDbmlRef.current = out;
     if (out !== buffer) {
       setDbml(out);
-      setStatus(`Edição aplicada (${appliedRefCount} refs atualizadas)`);
+      pushStatus(`Edição aplicada (${appliedRefCount} refs atualizadas)`);
     } else {
-      setStatus('');
+      pushStatus('');
     }
     return { openedModal: false, reconciledDbml: out };
   }, [migrateTableId]);
@@ -612,7 +619,7 @@ export default function App() {
         // bloqueia o save até o usuário resolver. Caso contrário, salva o texto reconciliado.
         const { openedModal, reconciledDbml } = handleEditorCommit();
         if (openedModal) {
-          setStatus('Confirme a renomeação antes de salvar');
+          pushStatus('Confirme a renomeação antes de salvar');
         } else {
           handleSave(reconciledDbml ?? undefined);
         }
@@ -682,7 +689,7 @@ export default function App() {
     const next = canvasStubs.length ? layoutExternalStubsOnTop(base, canvasStubs) : base;
     setPositions(next);
     setFitViewTrigger((n) => n + 1);
-    setStatus(
+    pushStatus(
       lineageMode
         ? `Canvas reorganizado para linhagem (${layoutModel.tables.length} tabelas)`
         : canvasStubs.length
@@ -759,7 +766,7 @@ export default function App() {
     (tableId: string) => {
       mutateDbml((d) => removeTable(d, tableId));
       pruneCanvasState([tableId]);
-      setStatus(`Tabela removida: ${tableId}`);
+      pushStatus(`Tabela removida: ${tableId}`);
       setSaveState('dirty');
     },
     [mutateDbml, pruneCanvasState],
@@ -770,7 +777,7 @@ export default function App() {
       if (!tableIds.length) return;
       mutateDbml((d) => tableIds.reduce((acc, id) => removeTable(acc, id), d));
       pruneCanvasState(tableIds);
-      setStatus(`${tableIds.length} tabela(s) removida(s)`);
+      pushStatus(`${tableIds.length} tabela(s) removida(s)`);
       setSaveState('dirty');
     },
     [mutateDbml, pruneCanvasState],
@@ -892,7 +899,15 @@ export default function App() {
       colorOf: (id) => colorsRef.current[id],
       onSetColor: (id, color) => setDbml((d) => setTableColor(d, id, color)),
       onSetGroupColor: (group, color) => setDbml((d) => setGroupColor(d, group, color)),
-      onResizeTable: (id, width) => setSizes((prev) => ({ ...prev, [id]: Math.round(width) })),
+      onResizeTable: (id, width, height) =>
+        setSizes((prev) => ({
+          ...prev,
+          [id]: {
+            ...prev[id],
+            width: Math.round(width),
+            ...(height != null ? { height: Math.round(height) } : {}),
+          },
+        })),
       layerOf,
       layerColorOf: (layerId) => layerColorOf(layersArrRef.current, layerId),
       onSetLayer: (id, layerId) =>
@@ -978,24 +993,24 @@ export default function App() {
     const toIsPk = !!toTable?.columns.find((c) => c.name === toCol)?.pk;
     if (fromIsPk && !toIsPk) {
       mutateDbml((d) => appendRef(d, toTbl, toCol, fromTbl, fromCol));
-      setStatus(`Relação criada: ${toTbl}.${toCol} → ${fromTbl}.${fromCol}`);
+      pushStatus(`Relação criada: ${toTbl}.${toCol} → ${fromTbl}.${fromCol}`);
     } else {
       mutateDbml((d) => appendRef(d, fromTbl, fromCol, toTbl, toCol));
-      setStatus(`Relação criada: ${fromTbl}.${fromCol} → ${toTbl}.${toCol}`);
+      pushStatus(`Relação criada: ${fromTbl}.${fromCol} → ${toTbl}.${toCol}`);
     }
   };
 
   const handleRemoveRef = (fromTbl: string, fromCol: string, toTbl: string, toCol: string) => {
     mutateDbml((d) => removeRef(d, fromTbl, fromCol, toTbl, toCol));
-    setStatus(`Relação removida: ${fromTbl}.${fromCol} → ${toTbl}.${toCol}`);
+    pushStatus(`Relação removida: ${fromTbl}.${fromCol} → ${toTbl}.${toCol}`);
   };
 
   const run = useCallback(async (label: string, fn: () => Promise<string>) => {
-    setStatus(`${label}…`);
+    pushStatus(`${label}…`);
     try {
-      setStatus(await fn());
+      pushStatus(await fn());
     } catch (e: any) {
-      setStatus(`Erro: ${e?.message ?? e}`);
+      pushStatus(`Erro: ${e?.message ?? e}`);
     }
   }, []);
 
@@ -1007,7 +1022,7 @@ export default function App() {
         : ids
             .map((id) => canvasPages.find((p) => p.id === id)?.name ?? id)
             .join(', ');
-      setStatus(ids.length ? `Canvas: ${names}` : 'Canvas vazio — marque assuntos no painel Páginas');
+      pushStatus(ids.length ? `Canvas: ${names}` : 'Canvas vazio — marque assuntos no painel Páginas');
       setSaveState('dirty');
     },
     [canvasPages],
@@ -1105,7 +1120,7 @@ export default function App() {
         setDbml(dbml0);
         prevDbmlRef.current = dbml0;
         setPositions(pos0);
-        setSizes(p.canvas?.sizes ?? {});
+        setSizes(api.normalizeSizes(p.canvas?.sizes));
         setColors(col0);
         setCollapsedGroups(p.canvas?.collapsedGroups ?? []);
         setCanvasPages(pages0);
@@ -1116,9 +1131,9 @@ export default function App() {
         // 'idle' (não 'saved'): o efeito de dirty roda após o render do switch,
         // quando loadedRef já voltou a true; o guard s==='idle' o mantém limpo.
         setSaveState('idle');
-        setStatus('Projeto carregado');
+        pushStatus('Projeto carregado');
       } catch (e: unknown) {
-        setStatus(`Erro ao trocar projeto: ${(e as Error)?.message ?? e}`);
+        pushStatus(`Erro ao trocar projeto: ${(e as Error)?.message ?? e}`);
       } finally {
         loadedRef.current = true;
       }
@@ -1143,7 +1158,7 @@ export default function App() {
         if (pinnedProjectId) {
           // Instância fixada: não troca; apenas avisa e atualiza a lista.
           await refreshProjects();
-          setStatus(pinnedCreatedMessage(name));
+          pushStatus(pinnedCreatedMessage(name));
           return;
         }
         const { activeId, projects: list } = await api.listProjects();
@@ -1151,7 +1166,7 @@ export default function App() {
         // Troca automaticamente para o novo projeto
         await switchProject(activeId !== currentProjectId ? activeId : list[list.length - 1]?.id ?? activeId);
       } catch (e: unknown) {
-        setStatus(`Erro ao criar projeto: ${(e as Error)?.message ?? e}`);
+        pushStatus(`Erro ao criar projeto: ${(e as Error)?.message ?? e}`);
       }
     },
     [currentProjectId, switchProject, pinnedProjectId, refreshProjects],
@@ -1163,7 +1178,7 @@ export default function App() {
         await api.renameProject(id, name);
         await refreshProjects();
       } catch (e: unknown) {
-        setStatus(`Erro ao renomear projeto: ${(e as Error)?.message ?? e}`);
+        pushStatus(`Erro ao renomear projeto: ${(e as Error)?.message ?? e}`);
       }
     },
     [refreshProjects],
@@ -1176,7 +1191,7 @@ export default function App() {
         await refreshProjects();
         await switchProject(meta.id);
       } catch (e: unknown) {
-        setStatus(`Erro ao duplicar projeto: ${(e as Error)?.message ?? e}`);
+        pushStatus(`Erro ao duplicar projeto: ${(e as Error)?.message ?? e}`);
       }
     },
     [refreshProjects, switchProject],
@@ -1192,7 +1207,7 @@ export default function App() {
           await switchProject(activeId);
         }
       } catch (e: unknown) {
-        setStatus(`Erro ao excluir projeto: ${(e as Error)?.message ?? e}`);
+        pushStatus(`Erro ao excluir projeto: ${(e as Error)?.message ?? e}`);
       }
     },
     [currentProjectId, switchProject],
@@ -1228,7 +1243,7 @@ export default function App() {
       [tableId]: defaultTablePosition(prev),
     }));
     focusTableWithPan(tableId);
-    setStatus(`Tabela criada: ${tableId}`);
+    pushStatus(`Tabela criada: ${tableId}`);
     setSaveState('dirty');
   };
 
@@ -1241,7 +1256,7 @@ export default function App() {
 
   const handleOrganize = () => {
     setDbml((d) => organize(d));
-    setStatus('Organizado: tabelas → refs → records');
+    pushStatus('Organizado: tabelas → refs → records');
   };
 
   return (
@@ -1300,7 +1315,8 @@ export default function App() {
             <span className="toggle-switch__knob" />
           </button>
         </span>
-        <span className="status">{status}</span>
+        <ProblemsPanel issues={modelIssues} onFocusTable={focusTableWithPan} onGoToLine={goToLine} />
+        <StatusLog status={status} logs={logs} />
         <span className={`savestate savestate--${saveState}`}>
           {saveState === 'saving'
             ? 'Salvando…'
@@ -1431,7 +1447,7 @@ export default function App() {
                   : pageIds
                       .map((id) => canvasPages.find((p) => p.id === id)?.name ?? id)
                       .join(', ');
-                setStatus(`${pageWizardTableCount} tabelas — canvas: ${names}`);
+                pushStatus(`${pageWizardTableCount} tabelas — canvas: ${names}`);
               }}
               onDismiss={() => {
                 setActivePageIds([]);
@@ -1445,7 +1461,6 @@ export default function App() {
               onFocusTable={focusTableWithPan}
               onAutolayout={handleAutolayout}
             />
-            <ProblemsPanel issues={modelIssues} onFocusTable={focusTableWithPan} onGoToLine={goToLine} />
           </CanvasActionsCtx.Provider>
           <RecordsPanel
             records={activeModel.records}
@@ -1471,7 +1486,7 @@ export default function App() {
             );
             prevDbmlRef.current = out;
             setDbml(out);
-            setStatus(`Edição aplicada (${appliedRefCount} refs atualizadas)`);
+            pushStatus(`Edição aplicada (${appliedRefCount} refs atualizadas)`);
             setPendingRename(null);
           }}
           onKeepSeparate={() => {
@@ -1480,7 +1495,7 @@ export default function App() {
             const { dbml: out } = applyRenames(pendingRename.buffer, pendingRename.impacts, migrateTableId, keepSeparateKeyRename);
             prevDbmlRef.current = out;
             setDbml(out);
-            setStatus('Rolenames registrados — filhas mantêm nome próprio');
+            pushStatus('Rolenames registrados — filhas mantêm nome próprio');
             setPendingRename(null);
           }}
           onClose={() => setPendingRename(null)}

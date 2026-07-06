@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ModelIssue } from '../dsl/validateModel';
-import { useDraggablePanel } from './useDraggablePanel';
 
 type Props = {
   issues: ModelIssue[];
@@ -8,67 +8,97 @@ type Props = {
   onGoToLine?: (line: number) => void;
 };
 
+// v15-03: badge compacto no topo (perto de Salvar/status). Sem problemas → oculto.
+// Clique abre a lista num popover via portal (não coberto pelos nós do canvas).
 export function ProblemsPanel({ issues, onFocusTable, onGoToLine }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
-  const { panelRef, dragStyle, onDragStart } = useDraggablePanel('localdrawdb.problemsPanelPos');
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const badgeRef = useRef<HTMLButtonElement>(null);
 
   const errors = useMemo(() => issues.filter((i) => i.severity === 'error'), [issues]);
   const warns = useMemo(() => issues.filter((i) => i.severity === 'warn'), [issues]);
 
+  // Fecha ao clicar fora (badge e popover) — padrão das paletas.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (badgeRef.current?.contains(t)) return;
+      if ((t as HTMLElement).closest?.('.problems-pop')) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    return () => document.removeEventListener('mousedown', onDown, true);
+  }, [open]);
+
+  // Some se não há problemas.
   if (!issues.length) return null;
 
+  const severity = errors.length ? 'error' : 'warn';
+  const label = errors.length
+    ? `${errors.length} erro${errors.length !== 1 ? 's' : ''}${warns.length ? ` · ${warns.length} aviso${warns.length !== 1 ? 's' : ''}` : ''}`
+    : `${warns.length} aviso${warns.length !== 1 ? 's' : ''}`;
+
+  const toggle = () => {
+    if (badgeRef.current) setRect(badgeRef.current.getBoundingClientRect());
+    setOpen((o) => !o);
+  };
+
   return (
-    <div
-      ref={panelRef}
-      className={`problems-panel ${collapsed ? 'is-collapsed' : ''}`}
-      style={dragStyle}
-    >
-      <div className="problems-panel__head">
-        <button
-          type="button"
-          className="problems-panel__grip"
-          title="Arrastar painel"
-          aria-label="Arrastar painel"
-          onPointerDown={onDragStart}
-        >
-          ⠿
-        </button>
-        <button type="button" className="problems-panel__toggle" onClick={() => setCollapsed((c) => !c)}>
-          {collapsed ? '◂' : '▾'} Problemas ({errors.length} erro{errors.length !== 1 ? 's' : ''}
-          {warns.length ? `, ${warns.length} aviso${warns.length !== 1 ? 's' : ''}` : ''})
-        </button>
-      </div>
-      {!collapsed && (
-        <ul className="problems-panel__list">
-          {issues.map((issue, i) => (
-            <li key={i} className={`problems-panel__item problems-panel__item--${issue.severity}`}>
-              <div className="problems-panel__row">
-                {issue.line != null && onGoToLine && (
-                  <button
-                    type="button"
-                    className="problems-panel__goto"
-                    onClick={() => onGoToLine(issue.line!)}
-                    title="Ir à linha no editor"
-                  >
-                    Linha
-                  </button>
-                )}
-                {issue.tableId && onFocusTable && (
-                  <button
-                    type="button"
-                    className="problems-panel__goto"
-                    onClick={() => onFocusTable(issue.tableId!)}
-                    title="Ir para tabela no canvas"
-                  >
-                    Tabela
-                  </button>
-                )}
-                <span className="problems-panel__msg">{issue.message}</span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <>
+      <button
+        ref={badgeRef}
+        type="button"
+        className={`problems-badge problems-badge--${severity}${open ? ' is-open' : ''}`}
+        title="Problemas do modelo"
+        onClick={toggle}
+      >
+        <span className="problems-badge__icon" aria-hidden>⚠</span>
+        <span className="problems-badge__label">{label}</span>
+      </button>
+      {open &&
+        rect &&
+        createPortal(
+          <div
+            className="problems-pop"
+            style={{
+              position: 'fixed',
+              top: rect.bottom + 4,
+              right: Math.max(8, window.innerWidth - rect.right),
+            }}
+          >
+            <ul className="problems-pop__list">
+              {issues.map((issue, i) => (
+                <li key={i} className={`problems-pop__item problems-pop__item--${issue.severity}`}>
+                  <div className="problems-pop__row">
+                    {issue.line != null && onGoToLine && (
+                      <button
+                        type="button"
+                        className="problems-pop__goto"
+                        onClick={() => { onGoToLine(issue.line!); setOpen(false); }}
+                        title="Ir à linha no editor"
+                      >
+                        Linha
+                      </button>
+                    )}
+                    {issue.tableId && onFocusTable && (
+                      <button
+                        type="button"
+                        className="problems-pop__goto"
+                        onClick={() => { onFocusTable(issue.tableId!); setOpen(false); }}
+                        title="Ir para tabela no canvas"
+                      >
+                        Tabela
+                      </button>
+                    )}
+                    <span className="problems-pop__msg">{issue.message}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
