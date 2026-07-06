@@ -64,6 +64,10 @@ export type Model = {
   refs: Ref[];
   lineage?: LineageEntry[];
   lineageFields?: FieldLineageEntry[];
+  /** Cores do bloco DBML `Colors {}` — chave: `schema.tabela`, `@grupo` ou `schema.tabela.coluna`. */
+  colors?: Record<string, string>;
+  /** Cores de camada (`LayerGroup nome [color: #hex]`) — chave: nome da camada. */
+  layerColors?: Record<string, string>;
   /** Avisos do import SQL (ex.: FK composta com aridade divergente). */
   warnings?: string[];
 };

@@ -37,7 +37,8 @@ function tableIdMatches(a: string, b: string): boolean {
 
 /** Faz parse de uma string DBML para o modelo canônico (inclui LayerGroup, Records, PK composta, Dbt). */
 export function dbmlToModel(dbml: string): Model {
-  const { clean, records, layerGroups, lineage, lineageFields, dbtTables } = extractRecords(dbml);
+  const { clean, records, layerGroups, lineage, lineageFields, dbtTables, colors } =
+    extractRecords(dbml);
   const db = Parser.parse(clean, 'dbml');
   const tables: Table[] = [];
   const refs: Ref[] = [];
@@ -153,11 +154,20 @@ export function dbmlToModel(dbml: string): Model {
     ? lineageFields.map((f) => ({ ...f }))
     : undefined;
 
+  const modelColors: Record<string, string> = {};
+  for (const c of colors) modelColors[c.table] = c.color;
+  const modelLayerColors: Record<string, string> = {};
+  for (const lg of layerGroups) {
+    if (lg.color) modelLayerColors[lg.name] = lg.color;
+  }
+
   return {
     tables,
     refs,
     lineage: modelLineage,
     lineageFields: modelLineageFields,
+    colors: Object.keys(modelColors).length ? modelColors : undefined,
+    layerColors: Object.keys(modelLayerColors).length ? modelLayerColors : undefined,
   };
 }
 
@@ -247,7 +257,8 @@ export function modelToDbml(model: Model): string {
   }
   if (layers.size) out.push('');
   for (const [name, members] of layers) {
-    out.push(`LayerGroup ${name} {`);
+    const color = model.layerColors?.[name];
+    out.push(`LayerGroup ${name}${color ? ` [color: ${color}]` : ''} {`);
     for (const m of members) out.push(`  ${m}`);
     out.push('}');
   }
@@ -319,6 +330,14 @@ export function modelToDbml(model: Model): string {
     out.push('');
     out.push('Dbt {');
     out.push(...dbtLines);
+    out.push('}');
+  }
+
+  const colorEntries = Object.entries(model.colors ?? {});
+  if (colorEntries.length) {
+    out.push('');
+    out.push('Colors {');
+    for (const [key, color] of colorEntries) out.push(`  ${key}: ${color}`);
     out.push('}');
   }
 

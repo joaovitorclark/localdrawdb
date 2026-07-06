@@ -176,9 +176,49 @@ function tableToSql(t: Table, model: Model, dialect: InputDialect): string {
   return parts.join('\n');
 }
 
+/**
+ * Rodapé de cores (comentado, SQL válido) — espelha o bloco DBML `Colors {}` e as
+ * cores de LayerGroup, filtrado às tabelas presentes no arquivo:
+ *   -- @colors
+ *   --   silver.dim_cliente: #b08d57
+ *   -- @layercolors
+ *   --   prata: #c0c0c0
+ */
+function emitColorsFooter(model: Model, tables: Table[]): string[] {
+  const tableKeys = new Set(tables.map((t) => qualifiedName(t).toLowerCase()));
+  const groupKeys = new Set(
+    tables.flatMap((t) => (t.group ? [t.group.toLowerCase()] : [])),
+  );
+  const layerKeys = new Set(
+    tables.flatMap((t) => (t.layer ? [t.layer.toLowerCase()] : [])),
+  );
+
+  const colorLines: string[] = [];
+  for (const [key, color] of Object.entries(model.colors ?? {})) {
+    const lower = key.toLowerCase();
+    const belongs = key.startsWith('@')
+      ? groupKeys.has(lower.slice(1))
+      : tableKeys.has(lower) ||
+        (lower.includes('.') && tableKeys.has(lower.slice(0, lower.lastIndexOf('.'))));
+    if (belongs) colorLines.push(`--   ${key}: ${color}`);
+  }
+
+  const layerLines: string[] = [];
+  for (const [layer, color] of Object.entries(model.layerColors ?? {})) {
+    if (layerKeys.has(layer.toLowerCase())) layerLines.push(`--   ${layer}: ${color}`);
+  }
+
+  const out: string[] = [];
+  if (colorLines.length) out.push('-- @colors', ...colorLines);
+  if (layerLines.length) out.push('-- @layercolors', ...layerLines);
+  return out;
+}
+
 /** Gera SQL no formato input/ para um dialeto (ou auto por tabela). */
 export function modelToInputSql(model: Model, dialect: InputDialect = 'spark'): string {
   const chunks = model.tables.map((t) => tableToSql(t, model, dialect));
+  const footer = emitColorsFooter(model, model.tables);
+  if (footer.length) chunks.push(footer.join('\n'));
   return chunks.filter(Boolean).join('\n\n') + '\n';
 }
 
@@ -186,11 +226,22 @@ export function modelToInputSql(model: Model, dialect: InputDialect = 'spark'): 
 export function modelToInputSqlByDialect(model: Model): { spark: string; oracle: string } {
   const sparkTables: string[] = [];
   const oracleTables: string[] = [];
+  const sparkModelTables: Table[] = [];
+  const oracleModelTables: Table[] = [];
   for (const t of model.tables) {
     const sql = tableToSql(t, model, 'auto');
-    if (resolveDialect(t, 'auto') === 'oracle') oracleTables.push(sql);
-    else sparkTables.push(sql);
+    if (resolveDialect(t, 'auto') === 'oracle') {
+      oracleTables.push(sql);
+      oracleModelTables.push(t);
+    } else {
+      sparkTables.push(sql);
+      sparkModelTables.push(t);
+    }
   }
+  const sparkFooter = emitColorsFooter(model, sparkModelTables);
+  if (sparkFooter.length) sparkTables.push(sparkFooter.join('\n'));
+  const oracleFooter = emitColorsFooter(model, oracleModelTables);
+  if (oracleFooter.length) oracleTables.push(oracleFooter.join('\n'));
   return {
     spark: sparkTables.join('\n\n') + (sparkTables.length ? '\n' : ''),
     oracle: oracleTables.join('\n\n') + (oracleTables.length ? '\n' : ''),
