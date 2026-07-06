@@ -620,6 +620,65 @@ function extractFieldLineageFooter(sql: string): FieldLineageEntry[] {
   return out;
 }
 
+const COLORS_FOOTER_HEADER_RE = /^--\s*@colors\s*$/i;
+const LAYERCOLORS_FOOTER_HEADER_RE = /^--\s*@layercolors\s*$/i;
+const COLORS_FOOTER_LINE_RE = /^--\s+(@?[A-Za-z0-9_.]+)\s*:\s*(\S+)\s*$/;
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Extrai os rodapés de cor (espelham o bloco DBML `Colors {}` e `LayerGroup [color:]`):
+ *   -- @colors
+ *   --   silver.dim_cliente: #b08d57
+ *   -- @layercolors
+ *   --   prata: #c0c0c0
+ * Cor fora de #rrggbb gera warning e é ignorada; linha que não casa encerra o bloco.
+ */
+function extractColorsFooter(
+  sql: string,
+  warnings: string[],
+): { colors: Record<string, string>; layerColors: Record<string, string> } {
+  const colors: Record<string, string> = {};
+  const layerColors: Record<string, string> = {};
+  let mode: 'colors' | 'layers' | null = null;
+  for (const raw of sql.split('\n')) {
+    const line = raw.trim();
+    if (COLORS_FOOTER_HEADER_RE.test(line)) {
+      mode = 'colors';
+      continue;
+    }
+    if (LAYERCOLORS_FOOTER_HEADER_RE.test(line)) {
+      mode = 'layers';
+      continue;
+    }
+    if (!mode) continue;
+    const m = line.startsWith('--') ? COLORS_FOOTER_LINE_RE.exec(line) : null;
+    if (!m) {
+      mode = null;
+      continue;
+    }
+    if (!HEX_COLOR_RE.test(m[2])) {
+      warnings.push(`@colors: cor inválida '${m[2]}' para '${m[1]}' (esperado #rrggbb)`);
+      continue;
+    }
+    if (mode === 'colors') colors[m[1]] = m[2];
+    else layerColors[m[1]] = m[2];
+  }
+  return { colors, layerColors };
+}
+
+/** Valida chaves de tabela/coluna do @colors contra as tabelas do arquivo (grupos não validam). */
+function validateColorKeys(colors: Record<string, string>, tables: Table[], warnings: string[]): void {
+  const tableKeys = new Set(tables.map((t) => qualifiedName(t).toLowerCase()));
+  for (const key of Object.keys(colors)) {
+    if (key.startsWith('@')) continue;
+    const lower = key.toLowerCase();
+    const asTable = tableKeys.has(lower);
+    const asColumn =
+      lower.includes('.') && tableKeys.has(lower.slice(0, lower.lastIndexOf('.')));
+    if (!asTable && !asColumn) warnings.push(`@colors: tabela '${key}' não encontrada`);
+  }
+}
+
 /**
  * Comentário inline `-- texto` na linha da coluna vira descrição da coluna
  * (Column.note). Ignora diretivas `-- @...` (linhagem/meta) e linhas de constraint.
@@ -875,11 +934,16 @@ export function sqlToModel(sql: string): Model {
 
   applyOracleComments(tables, sql);
 
+  const { colors, layerColors } = extractColorsFooter(sql, warnings);
+  validateColorKeys(colors, tables, warnings);
+
   const model: Model = {
     tables,
     refs,
     lineage: lineage.length ? lineage : undefined,
     lineageFields: lineageFields.length ? lineageFields : undefined,
+    colors: Object.keys(colors).length ? colors : undefined,
+    layerColors: Object.keys(layerColors).length ? layerColors : undefined,
   };
   validateLineage(model, warnings);
   if (warnings.length) model.warnings = warnings;
@@ -909,11 +973,15 @@ export function mergeModel(base: Model, incoming: Model): Model {
   const warnings = [...(base.warnings ?? []), ...(incoming.warnings ?? [])];
   const lineage = mergeLineageEntries(base.lineage, incoming.lineage);
   const lineageFields = mergeFieldLineageEntries(base.lineageFields, incoming.lineageFields);
+  const colors = { ...(base.colors ?? {}), ...(incoming.colors ?? {}) };
+  const layerColors = { ...(base.layerColors ?? {}), ...(incoming.layerColors ?? {}) };
   return {
     tables: [...byKey.values()],
     refs,
     lineage: lineage.length ? lineage : undefined,
     lineageFields: lineageFields.length ? lineageFields : undefined,
+    colors: Object.keys(colors).length ? colors : undefined,
+    layerColors: Object.keys(layerColors).length ? layerColors : undefined,
     warnings: warnings.length ? warnings : undefined,
   };
 }

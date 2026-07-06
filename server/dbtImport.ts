@@ -4,8 +4,84 @@
 //  3. dbt-docs (manifest.json): DAG, tipos reais e tests resolvidos.
 // Inverte a codificação do export (F2) para round-trip semântico.
 import yaml from 'js-yaml';
-import { parseTypeName } from './model.ts';
-import type { Column, LineageEntry, Model, Ref, Table } from './model.ts';
+import { parseTypeName, qualifiedName } from './model.ts';
+import type { Column, FieldLineageEntry, LineageEntry, Model, Ref, Table } from './model.ts';
+
+/** Acumulador de metadados LocalDrawDB (meta.localdrawdb) coletados dos yml. */
+type LdbAcc = {
+  colors: Record<string, string>;
+  layerColors: Record<string, string>;
+  lineageFields: FieldLineageEntry[];
+};
+
+const newLdbAcc = (): LdbAcc => ({ colors: {}, layerColors: {}, lineageFields: [] });
+
+/** Espalha os campos do acumulador no Model (omitindo vazios). */
+function applyLdbAcc(model: Model, acc: LdbAcc): Model {
+  if (Object.keys(acc.colors).length) model.colors = acc.colors;
+  if (Object.keys(acc.layerColors).length) model.layerColors = acc.layerColors;
+  if (acc.lineageFields.length) model.lineageFields = acc.lineageFields;
+  return model;
+}
+
+/**
+ * Aplica `meta.localdrawdb` de uma entrada de tabela (model ou source): schema (se a
+ * pasta não definiu), layer/group, PK explícita (vence a inferência por tests; 2+
+ * colunas = composta), records; cores vão para o acumulador. Depois coleta a meta
+ * das colunas (cor do nome + mapeamento L2).
+ */
+function applyLdbMeta(table: Table, entry: any, acc: LdbAcc): void {
+  const ldb = entry?.meta?.localdrawdb;
+  if (ldb && typeof ldb === 'object') {
+    if (!table.schema && typeof ldb.schema === 'string') table.schema = ldb.schema;
+    if (typeof ldb.layer === 'string') table.layer = ldb.layer;
+    if (typeof ldb.group === 'string') table.group = ldb.group;
+    const qn = qualifiedName(table);
+    if (typeof ldb.color === 'string') acc.colors[qn] = ldb.color;
+    if (table.group && typeof ldb.groupColor === 'string') {
+      acc.colors[`@${table.group}`] = ldb.groupColor;
+    }
+    if (table.layer && typeof ldb.layerColor === 'string') {
+      acc.layerColors[table.layer] = ldb.layerColor;
+    }
+    if (Array.isArray(ldb.pk) && ldb.pk.length) {
+      const names = ldb.pk.map(String);
+      for (const c of table.columns) c.pk = false;
+      if (names.length === 1) {
+        const col = table.columns.find((c) => c.name === names[0]);
+        if (col) col.pk = true;
+      } else {
+        table.compositePks = [names];
+      }
+    }
+    if (ldb.records && Array.isArray(ldb.records.rows)) {
+      table.records = {
+        columns: Array.isArray(ldb.records.columns)
+          ? ldb.records.columns.map(String)
+          : table.columns.map((c) => c.name),
+        rows: ldb.records.rows.map((r: unknown) => (Array.isArray(r) ? r.map(String) : [])),
+      };
+    }
+  }
+
+  const qn = qualifiedName(table);
+  for (const c of entry?.columns ?? []) {
+    const cldb = c?.meta?.localdrawdb;
+    if (!cldb || typeof cldb !== 'object') continue;
+    if (typeof cldb.color === 'string') acc.colors[`${qn}.${c.name}`] = cldb.color;
+    const map = cldb.map;
+    if (map && typeof map.table === 'string' && typeof map.column === 'string') {
+      acc.lineageFields.push({
+        targetTable: qn,
+        targetColumn: String(c.name),
+        sourceTable: map.table,
+        sourceColumn: map.column,
+        ...(typeof map.note === 'string' ? { note: map.note } : {}),
+        ...(typeof map.ref === 'string' ? { ref: map.ref } : {}),
+      });
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers comuns
@@ -85,7 +161,7 @@ const rawTestsOf = (c: any): unknown[] => c?.data_tests ?? c?.tests ?? [];
 // 1. schema.yml / properties.yml
 // ---------------------------------------------------------------------------
 
-function parseModelEntry(m: any, defaultSchema: string | undefined, refs: Ref[]): Table {
+function parseModelEntry(m: any, defaultSchema: string | undefined, refs: Ref[], acc: LdbAcc): Table {
   const table: Table = { name: m.name, columns: [] };
   if (defaultSchema) table.schema = defaultSchema;
   if (m.description) table.note = String(m.description);
@@ -102,10 +178,11 @@ function parseModelEntry(m: any, defaultSchema: string | undefined, refs: Ref[])
     rawByCol.set(c.name, rawTestsOf(c));
   }
   finalizeTests(table, rawByCol, refs);
+  applyLdbMeta(table, m, acc);
   return table;
 }
 
-function parseSourceTable(st: any, schema: string | undefined, refs: Ref[]): Table {
+function parseSourceTable(st: any, schema: string | undefined, refs: Ref[], acc: LdbAcc): Table {
   const table: Table = { name: st.name, columns: [], resourceType: 'source' };
   if (schema) table.schema = schema;
   if (st.description) table.note = String(st.description);
@@ -117,6 +194,7 @@ function parseSourceTable(st: any, schema: string | undefined, refs: Ref[]): Tab
     rawByCol.set(c.name, rawTestsOf(c));
   }
   finalizeTests(table, rawByCol, refs);
+  applyLdbMeta(table, st, acc);
   return table;
 }
 
@@ -130,16 +208,17 @@ export function schemaYmlToModel(content: string, defaultSchema?: string): Model
   }
   const tables: Table[] = [];
   const refs: Ref[] = [];
+  const acc = newLdbAcc();
   if (doc && Array.isArray(doc.models)) {
-    for (const m of doc.models) tables.push(parseModelEntry(m, defaultSchema, refs));
+    for (const m of doc.models) tables.push(parseModelEntry(m, defaultSchema, refs, acc));
   }
   if (doc && Array.isArray(doc.sources)) {
     for (const s of doc.sources) {
       const schema = s.schema ?? s.name;
-      for (const st of s.tables ?? []) tables.push(parseSourceTable(st, schema, refs));
+      for (const st of s.tables ?? []) tables.push(parseSourceTable(st, schema, refs, acc));
     }
   }
-  return { tables, refs };
+  return applyLdbAcc({ tables, refs }, acc);
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +264,7 @@ function extractSqlDeps(sql: string): {
 export function dbtProjectToModel(files: { file: string; content: string }[]): Model {
   const byKey = new Map<string, Table>();
   const refs: Ref[] = [];
+  const acc = newLdbAcc();
   const refSeen = new Set<string>();
   const addRef = (r: Ref) => {
     const k = `${r.from.table}.${r.from.column}->${r.to.table}.${r.to.column}`.toLowerCase();
@@ -207,6 +287,9 @@ export function dbtProjectToModel(files: { file: string; content: string }[]): M
     const m = schemaYmlToModel(f.content, schemaFromPath(f.file));
     for (const t of m.tables) byKey.set(tableKey(t), t);
     for (const r of m.refs) addRef(r);
+    Object.assign(acc.colors, m.colors ?? {});
+    Object.assign(acc.layerColors, m.layerColors ?? {});
+    if (m.lineageFields?.length) acc.lineageFields.push(...m.lineageFields);
   }
 
   const lineage: LineageEntry[] = [];
@@ -223,14 +306,25 @@ export function dbtProjectToModel(files: { file: string; content: string }[]): M
     }
     if (!table.materialization) table.materialization = asMaterialization(materialized);
     if (!table.tags && tags?.length) table.tags = tags;
-    if (deps.length) lineage.push({ target: name, sources: deps });
+    if (deps.length) {
+      // Qualifica pelo schema quando a tabela é conhecida (ref()/source() usam nome cru).
+      const byName = (n: string) => [...byKey.values()].find((t) => t.name === n);
+      const sources = deps.map((d) => {
+        const src = byName(d);
+        return src ? qualifiedName(src) : d;
+      });
+      lineage.push({ target: qualifiedName(table), sources });
+    }
   }
 
-  return { tables: [...byKey.values()], refs, ...(lineage.length ? { lineage } : {}) };
+  return applyLdbAcc(
+    { tables: [...byKey.values()], refs, ...(lineage.length ? { lineage } : {}) },
+    acc,
+  );
 }
 
 // ---------------------------------------------------------------------------
-// 3. dbt-docs (manifest.json)
+// 3. dbt-docs (manifest.json) — meta.localdrawdb fora do escopo (v18-11)
 // ---------------------------------------------------------------------------
 
 const MODEL_RESOURCE = new Set(['model', 'seed', 'snapshot']);

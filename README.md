@@ -83,9 +83,9 @@ npm run dev -- vendas rh           # só esses
 - **Undo/Redo** (↶ ↷ ou Cmd/Ctrl+Z e Cmd/Ctrl+Shift+Z): histórico global (texto + canvas).
 - **Organize**: reordena o DBML em `tabelas → refs → records → lineage` (preserva comentários).
 - **+ Tabela / + Metadados**: nova tabela ou snippet de colunas lakehouse padrão.
-- **Importar (input/)**: mescla `.sql` de `data/input/` (Spark, Oracle, `@layer`/`@group`/`@note`/`@fk`, `COMMENT ON`, PK composta). Exemplos versionados em [`examples/input/`](examples/input/) — copie para `data/input/` ou use o pacote [`examples/demo_lakehouse_oracle/`](examples/demo_lakehouse_oracle/) (SQL + DBML + canvas prontos).
+- **Importar (input/)**: mescla arquivos de `data/input/` — `.sql` (Spark, Oracle, `@layer`/`@group`/`@note`/`@fk`, `COMMENT ON`, PK composta), **`.dbml`** (formato nativo, sem perdas — mande seu `project.dbml` para alguém importar) e **pacotes dbt** (`schema.yml`/models; metadados LocalDrawDB viajam em `meta.localdrawdb`). Exemplos versionados em [`examples/input/`](examples/input/) — copie para `data/input/` ou use o pacote [`examples/demo_lakehouse_oracle/`](examples/demo_lakehouse_oracle/) (SQL + DBML + canvas prontos).
 - **Exportar** (menu + botão): escolha o formato e gera artefatos em `data/output/`:
-  - **LocalDrawDB (Spark/Oracle)** — SQL reimportável com metadados (`@map`, `@layer`, `INSERT`)
+  - **LocalDrawDB (Spark/Oracle)** — SQL reimportável com metadados (`@map`, `@layer`, `INSERT`, cores via `@colors`/`@layercolors`): quem importa abre o modelo com as mesmas cores e linhagem (só as posições do canvas não viajam)
   - **Spark DDL** — `CREATE TABLE` Delta por schema
   - **Oracle DDL / PostgreSQL DDL** — `CREATE TABLE` + `ALTER TABLE` FK (sem metadados)
   - **erwin (ANSI)**, **dbt**, **Mermaid**
@@ -147,7 +147,7 @@ examples/                      # versionado — demos educativas
 | Alvo | Saída | Observação |
 |------|-------|------------|
 | Spark/Databricks | `data/output/spark/<schema>.sql` | `CREATE TABLE ... USING DELTA` |
-| dbt | `data/output/dbt/` | models `.sql` + `schema.yml` + `dbt_project.yml` |
+| dbt | `data/output/dbt/` | models `.sql` + `schema.yml` (+ `data_type` e `meta.localdrawdb`: cores, camadas, grupos, PK, records, linhagem L2) + `dbt_project.yml` — reimportável |
 | erwin | `data/output/erwin/modelo.sql` | DDL ANSI para Reverse Engineer |
 | Mermaid | `data/output/mermaid/modelo.mmd` | `erDiagram` |
 | PNG | download + `data/output/diagram.png` | captura do canvas |

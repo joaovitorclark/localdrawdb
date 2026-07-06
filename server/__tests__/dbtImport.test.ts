@@ -183,9 +183,9 @@ describe('dbtFilesToModel (projeto em pasta)', () => {
     expect(model.tables.find((t) => t.name === 'pedido')).toBeDefined();
   });
 
-  it('extrai lineage de ref()/source() do SQL', () => {
-    const lin = model.lineage?.find((l) => l.target === 'pedido');
-    expect(lin?.sources).toContain('raw_pedido');
+  it('extrai lineage de ref()/source() do SQL com nomes qualificados', () => {
+    const lin = model.lineage?.find((l) => l.target === 'prata.pedido');
+    expect(lin?.sources).toContain('bronze.raw_pedido');
   });
 
   it('retorna null quando não há artefatos dbt', () => {
@@ -267,8 +267,8 @@ describe('fixtures examples/dbt', () => {
     const names = model.tables.map((t) => t.name).sort();
     expect(names).toEqual(['customers', 'orders', 'raw_customers', 'raw_orders']);
     expect(model.tables.find((t) => t.name === 'raw_orders')!.resourceType).toBe('source');
-    const lin = model.lineage?.find((l) => l.target === 'orders');
-    expect(lin?.sources).toEqual(expect.arrayContaining(['raw_orders', 'customers']));
+    const lin = model.lineage?.find((l) => l.target === 'marts.orders');
+    expect(lin?.sources).toEqual(expect.arrayContaining(['raw.raw_orders', 'marts.customers']));
   });
 
   it('manifest.json produz as mesmas tabelas e a FK orders→customers', async () => {

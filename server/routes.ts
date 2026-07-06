@@ -49,7 +49,7 @@ function parseOr400(dbml: string, reply: FastifyReply): Model | null {
  * Núcleo do import: recebe lista de arquivos SQL e DBML base, retorna
  * resultado merged. Compartilhado por /api/import e /api/projects/:id/import.
  */
-async function runImport(
+export async function runImport(
   inputs: { file: string; content: string }[],
   baseDbml: string,
 ): Promise<{
@@ -71,11 +71,32 @@ async function runImport(
   let merged = model;
   const imported: string[] = [];
 
+  // DBML nativo (.dbml): merge direto do modelo canônico — formato sem perdas.
+  const dbmlInputs = inputs.filter((f) => /\.dbml$/i.test(f.file));
+  for (const { file, content } of dbmlInputs) {
+    let incoming: Model;
+    try {
+      incoming = dbmlToModel(content);
+    } catch (e: any) {
+      const msg = e?.diags?.[0]?.message ?? e?.diags?.[0]?.error ?? e?.message ?? 'DBML inválido';
+      warnings.push(`${file}: DBML inválido: ${msg}`);
+      continue;
+    }
+    if (incoming.tables.length) {
+      merged = mergeModel(merged, incoming);
+      const refCount = incoming.refs.length;
+      imported.push(
+        `${file} (${incoming.tables.length} tabela(s)${refCount ? `, ${refCount} ref(s)` : ''})`,
+      );
+    }
+  }
+
   // Separa artefatos dbt (.yml/.json e .sql com Jinja) do SQL DDL puro.
   const isDbtArtifact = (f: { file: string; content: string }) =>
     /\.(ya?ml|json)$/i.test(f.file) || (/\.sql$/i.test(f.file) && f.content.includes('{{'));
-  const dbtInputs = inputs.filter(isDbtArtifact);
-  const ddlInputs = inputs.filter((f) => !isDbtArtifact(f));
+  const rest = inputs.filter((f) => !/\.dbml$/i.test(f.file));
+  const dbtInputs = rest.filter(isDbtArtifact);
+  const ddlInputs = rest.filter((f) => !isDbtArtifact(f));
 
   for (const { file, content } of ddlInputs) {
     const incoming = sqlToModel(content);
