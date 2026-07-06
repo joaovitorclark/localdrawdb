@@ -29,6 +29,8 @@ em produção, projeto `default` com 67 tabelas). Cada item tem spec própria ne
 | 07 | [Overlay de atalhos `?` + descoberta](v18-07-shortcuts-discovery.md) | ⚡ feature | Baixa | 06 |
 | 08 | [Ícones SVG + tooltips próprios](v18-08-icons-tooltips.md) | 🎨 visual | Média | 03 |
 | 09 | [Code-split (CodeMirror/parsers)](v18-09-code-split.md) | 🚀 perf | Média | — |
+| 10 | [Input lê `.dbml` (troca nativa sem perdas)](v18-10-dbml-input.md) | 🔁 portabilidade | Baixa | 01 |
+| 11 | [Export dbt com metadados + input de volta](v18-11-dbt-metadata-roundtrip.md) | 🔁 portabilidade | Média | 01 |
 
 ## Ordem recomendada
 
