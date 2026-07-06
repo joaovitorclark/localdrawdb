@@ -85,7 +85,7 @@ npm run dev -- vendas rh           # só esses
 - **+ Tabela / + Metadados**: nova tabela ou snippet de colunas lakehouse padrão.
 - **Importar (input/)**: mescla `.sql` de `data/input/` (Spark, Oracle, `@layer`/`@group`/`@note`/`@fk`, `COMMENT ON`, PK composta). Exemplos versionados em [`examples/input/`](examples/input/) — copie para `data/input/` ou use o pacote [`examples/demo_lakehouse_oracle/`](examples/demo_lakehouse_oracle/) (SQL + DBML + canvas prontos).
 - **Exportar** (menu + botão): escolha o formato e gera artefatos em `data/output/`:
-  - **LocalDrawDB (Spark/Oracle)** — SQL reimportável com metadados (`@map`, `@layer`, `INSERT`)
+  - **LocalDrawDB (Spark/Oracle)** — SQL reimportável com metadados (`@map`, `@layer`, `INSERT`, cores via `@colors`/`@layercolors`): quem importa abre o modelo com as mesmas cores e linhagem (só as posições do canvas não viajam)
   - **Spark DDL** — `CREATE TABLE` Delta por schema
   - **Oracle DDL / PostgreSQL DDL** — `CREATE TABLE` + `ALTER TABLE` FK (sem metadados)
   - **erwin (ANSI)**, **dbt**, **Mermaid**
