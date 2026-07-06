@@ -58,6 +58,70 @@ Table silver.dim_cnes {
     const next = `${prev}\nTable silver.\n`;
     expect(detectRenames(prev, next).filter((d) => d.kind === 'table')).toHaveLength(0);
   });
+
+  // --- Bug 3 (v18): múltiplos renames simultâneos ---
+
+  it('detecta renome de 2 tabelas de uma vez (pareadas por colunas)', () => {
+    const prev = `Table gold.dim_customer {
+  customer_id integer [pk]
+  name string
+}
+Table gold.fct_sales {
+  id integer [pk]
+  amount decimal
+}
+`;
+    const next = prev
+      .replace('gold.dim_customer', 'gold.dim_client')
+      .replace('gold.fct_sales', 'gold.fct_orders');
+    const detected = detectRenames(prev, next).filter((d) => d.kind === 'table');
+    expect(detected).toHaveLength(2);
+    expect(detected).toContainEqual({ kind: 'table', oldId: 'gold.dim_customer', newId: 'gold.dim_client' });
+    expect(detected).toContainEqual({ kind: 'table', oldId: 'gold.fct_sales', newId: 'gold.fct_orders' });
+  });
+
+  it('detecta renome de 2 colunas na mesma tabela (pareadas por assinatura)', () => {
+    const prev = `Table s.t {
+  a_id bigint [pk]
+  a_name string
+  created_at timestamp
+}
+`;
+    // renomeia a_id->pk_id (bigint) e a_name->label (string); tipos distintos => pareamento único
+    const next = prev.replace('a_id bigint', 'pk_id bigint').replace('a_name string', 'label string');
+    const detected = detectRenames(prev, next).filter((d) => d.kind === 'column');
+    expect(detected).toContainEqual({ kind: 'column', table: 's.t', oldCol: 'a_id', newCol: 'pk_id' });
+    expect(detected).toContainEqual({ kind: 'column', table: 's.t', oldCol: 'a_name', newCol: 'label' });
+  });
+
+  it('NÃO adivinha quando 2 colunas de mesma assinatura mudam (ambíguo)', () => {
+    const prev = `Table s.t {
+  id bigint [pk]
+  foo string
+  bar string
+}
+`;
+    // foo->x e bar->y, ambos string => pareamento ambíguo => não detecta coluna
+    const next = prev.replace('foo string', 'x string').replace('bar string', 'y string');
+    const detected = detectRenames(prev, next).filter((d) => d.kind === 'column');
+    expect(detected).toHaveLength(0);
+  });
+
+  it('NÃO trata inserir/remover tabelas distintas como rename (sem overlap)', () => {
+    const prev = `Table a.one {
+  id bigint [pk]
+  col_a string
+}
+`;
+    // remove a.one e adiciona b.two totalmente diferente => overlap baixo => sem rename
+    const next = `Table b.two {
+  other_id bigint [pk]
+  zzz decimal
+}
+`;
+    const detected = detectRenames(prev, next).filter((d) => d.kind === 'table');
+    expect(detected).toHaveLength(0);
+  });
 });
 
 describe('renameColumnAllRefs', () => {

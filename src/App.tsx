@@ -892,6 +892,12 @@ export default function App() {
           prevDbmlRef.current = next;
           return next;
         });
+        // Migra a seleção para o novo nome — senão o painel de campo (ColumnPanel),
+        // preso ao selectedColumn, continua mostrando o nome antigo (bug v18).
+        const sel = useInteraction.getState().selectedColumn;
+        if (sel?.table === table && sel?.column === oldName) {
+          selectColumn({ table, column: newName.trim() });
+        }
       },
       onGoToColumn: goToColumn,
       onRenameTable: (tableId, newName) => {
