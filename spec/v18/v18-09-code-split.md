@@ -43,3 +43,12 @@ node-sql-parser — nem tudo precisa estar no caminho crítico do primeiro paint
 
 - Sem unit novo (mudança de empacotamento); gate = scripts headless existentes + medição
   antes/depois anexada na PR.
+
+## Decisão registrada — @dbml/core
+
+- `@dbml/core` permanece no caminho crítico do client nesta etapa.
+- Motivo: `parseDbml()` é chamado no load inicial para montar o modelo do canvas (tabelas,
+  refs, páginas, validação e estado inicial). Adiar com `import()` nesse ponto adicionaria
+  latência e estado de "warmup" antes do primeiro render útil.
+- O ganho principal de v18-09 vem do split do editor (`@uiw/react-codemirror` + extensões),
+  que não é necessário para o primeiro paint do canvas.
