@@ -467,8 +467,8 @@ export async function readInputSqlForSlug(slug: string): Promise<{ file: string;
   );
 }
 
-/** Extensões consideradas no import (SQL DDL + artefatos dbt). */
-const IMPORT_EXTS = ['.sql', '.yml', '.yaml', '.json'];
+/** Extensões consideradas no import (SQL DDL + artefatos dbt + DBML nativo). */
+export const IMPORT_EXTS = ['.sql', '.yml', '.yaml', '.json', '.dbml'];
 
 /**
  * Lê recursivamente o input dir do projeto, retornando todos os arquivos de
