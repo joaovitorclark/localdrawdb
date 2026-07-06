@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useDeferredValue, startTransition, type MouseEvent as ReactMouseEvent } from 'react';
-import { Editor, type EditorHandle } from './editor/Editor';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useDeferredValue, startTransition, type MouseEvent as ReactMouseEvent } from 'react';
+import type { EditorHandle } from './editor/Editor';
 import { Canvas } from './canvas/Canvas';
 import { METADATA_SNIPPET, newTableTemplate, parseDbml, type ParseResult } from './dsl/parse';
 import { validateModel } from './dsl/validateModel';
@@ -59,6 +59,10 @@ import type { CanvasPage, LineageLink, ProjectMeta, TableSize } from './api';
 type Positions = Record<string, { x: number; y: number }>;
 type Colors = Record<string, string>;
 type Snapshot = { dbml: string; positions: Positions; colors: Colors };
+const Editor = lazy(async () => {
+  const mod = await import('./editor/Editor');
+  return { default: mod.Editor };
+});
 
 function resolveActivePageIds(
   canvas: api.CanvasState | undefined,
@@ -1571,17 +1575,33 @@ export default function App() {
               )}
             </svg>
           </button>
-          <Editor
-            ref={editorRef}
-            value={dbml}
-            onChange={handleDbmlChange}
-            onCommit={handleEditorCommit}
-            error={parsed.error}
-            errorLine={parsed.errorLine}
-            onFocusTable={focusTableWithPan}
-            onCursorLine={handleEditorCursorLine}
-            onGoToError={() => setEditorCollapsed(false)}
-          />
+          <Suspense
+            fallback={(
+              <div className="editor editor--loading" aria-hidden>
+                <div className="editor-skeleton__outline" />
+                <div className="editor-skeleton__body">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+            )}
+          >
+            <Editor
+              ref={editorRef}
+              value={dbml}
+              onChange={handleDbmlChange}
+              onCommit={handleEditorCommit}
+              error={parsed.error}
+              errorLine={parsed.errorLine}
+              onFocusTable={focusTableWithPan}
+              onCursorLine={handleEditorCursorLine}
+              onGoToError={() => setEditorCollapsed(false)}
+            />
+          </Suspense>
         </section>
         {!editorCollapsed && (
           <div
