@@ -4,6 +4,7 @@ import { getColumnSettings, setColumnSetting, setTableOrRecordsNote } from '../d
 import { useInteraction } from '../store/interaction';
 import type { RefView, TableView } from '../dsl/parse';
 import { Chevron } from '../icons';
+import { useCollapsePersist } from '../hooks/useCollapsePersist';
 
 type Props = {
   records: ParsedRecords[];
@@ -79,7 +80,8 @@ function NoteField({
 }
 
 export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
-  const [open, setOpen] = useState(loadRecordsOpen);
+  const [collapsed, toggleCollapsed] = useCollapsePersist('ldb.panel.records', true);
+  const open = !collapsed;
   const selectedTable = useInteraction((s) => s.selectedTable);
   const selectedColumn = useInteraction((s) => s.selectedColumn);
   const selectedGroup = useInteraction((s) => s.selectedGroup);
@@ -157,21 +159,9 @@ export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
     );
   };
 
-  const toggleOpen = () => {
-    setOpen((current) => {
-      const next = !current;
-      try {
-        localStorage.setItem(RECORDS_OPEN_KEY, next ? '1' : '0');
-      } catch {
-        // no-op: persistência indisponível
-      }
-      return next;
-    });
-  };
-
   return (
     <div className={`records-panel ${open ? 'is-open' : ''}`}>
-      <button className="records-panel__toggle" onClick={toggleOpen}>
+      <button className="records-panel__toggle" onClick={toggleCollapsed}>
         <Chevron dir={open ? 'down' : 'right'} className="icon-inline" size={14} />
         {' '}Dados (amostra) · {Math.max(panelCount, 1)} tabela(s)
       </button>

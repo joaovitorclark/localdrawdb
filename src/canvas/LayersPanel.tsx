@@ -4,6 +4,7 @@ import { LAYER_PRESETS } from '../layers';
 import { useInteraction } from '../store/interaction';
 import { Chevron, Dot } from '../icons';
 import { Tooltip } from '../Tooltip';
+import { useCollapsePersist } from '../hooks/useCollapsePersist';
 
 type Props = {
   layers: Layer[];
@@ -13,18 +14,8 @@ type Props = {
   onAutolayout?: () => void;
 };
 
-const COLLAPSE_KEY = 'localdrawdb.layersPanelCollapsed';
-
-function loadCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
 export function LayersPanel({ layers, tables, onAddLayer, onFocusTable, onAutolayout }: Props) {
-  const [collapsed, setCollapsed] = useState(loadCollapsed);
+  const [collapsed, toggleCollapsed] = useCollapsePersist('ldb.panel.layers', false);
   const [tableQuery, setTableQuery] = useState('');
   const hiddenLayers = useInteraction((s) => s.hiddenLayers);
   const toggleLayer = useInteraction((s) => s.toggleLayer);
@@ -45,18 +36,6 @@ export function LayersPanel({ layers, tables, onAddLayer, onFocusTable, onAutola
     if (!q) return sorted;
     return sorted.filter((t) => t.id.toLowerCase().includes(q));
   }, [tables, tableQuery]);
-
-  const toggleCollapsed = () => {
-    setCollapsed((c) => {
-      const next = !c;
-      try {
-        localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  };
 
   return (
     <div className={`layers-panel ${collapsed ? 'is-collapsed' : ''}`}>
