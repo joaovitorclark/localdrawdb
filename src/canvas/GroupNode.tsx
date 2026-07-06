@@ -3,6 +3,8 @@
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useCanvasActions, TABLE_COLORS } from './actions';
+import { Chevron, Close } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 type GroupData = { label: string; collapsed: boolean; count: number; color?: string; onToggle?: () => void };
 
@@ -38,17 +40,19 @@ function GroupNodeImpl({ data }: { data: GroupData }) {
         </>
       )}
       <span className="group-node__label group-node__drag-handle">
-        <button
-          type="button"
-          className="group-node__toggle"
-          title={data.collapsed ? 'Expandir' : 'Colapsar'}
-          onClick={(e) => {
-            e.stopPropagation();
-            data.onToggle?.();
-          }}
-        >
-          {data.collapsed ? '▸' : '▾'}
-        </button>
+        <Tooltip label={data.collapsed ? 'Expandir' : 'Colapsar'}>
+          <button
+            type="button"
+            className="group-node__toggle"
+            aria-label={data.collapsed ? 'Expandir grupo' : 'Colapsar grupo'}
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onToggle?.();
+            }}
+          >
+            <Chevron dir={data.collapsed ? 'right' : 'down'} className="icon-inline" size={14} />
+          </button>
+        </Tooltip>
         {data.label}
         {data.collapsed ? ` · ${data.count} tabela(s)` : ''}
         <button
@@ -87,17 +91,19 @@ function GroupNodeImpl({ data }: { data: GroupData }) {
                   }}
                 />
               ))}
-              <button
-                type="button"
-                className="color-reset"
-                title="Sem cor"
-                onClick={() => {
-                  actions.onSetGroupColor(data.label, null);
-                  close();
-                }}
-              >
-                ✕
-              </button>
+              <Tooltip label="Sem cor">
+                <button
+                  type="button"
+                  className="color-reset"
+                  aria-label="Sem cor"
+                  onClick={() => {
+                    actions.onSetGroupColor(data.label, null);
+                    close();
+                  }}
+                >
+                  <Close className="icon-inline" size={14} />
+                </button>
+              </Tooltip>
             </div>
           </div>,
           document.body,

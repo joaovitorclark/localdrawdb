@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import type { Layer } from '../api';
 import { LAYER_PRESETS } from '../layers';
 import { useInteraction } from '../store/interaction';
+import { Chevron, Dot } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 type Props = {
   layers: Layer[];
@@ -58,14 +60,16 @@ export function LayersPanel({ layers, tables, onAddLayer, onFocusTable, onAutola
 
   return (
     <div className={`layers-panel ${collapsed ? 'is-collapsed' : ''}`}>
-      <button
-        type="button"
-        className="layers-panel__collapse"
-        onClick={toggleCollapsed}
-        title={collapsed ? 'Expandir painel' : 'Recolher painel'}
-      >
-        {collapsed ? '◂ Camadas' : '▾ Camadas e tabelas'}
-      </button>
+      <Tooltip label={collapsed ? 'Expandir painel' : 'Recolher painel'}>
+        <button
+          type="button"
+          className="layers-panel__collapse"
+          onClick={toggleCollapsed}
+        >
+          <Chevron dir={collapsed ? 'left' : 'down'} className="icon-inline" size={14} />
+          {collapsed ? ' Camadas' : ' Camadas e tabelas'}
+        </button>
+      </Tooltip>
       {!collapsed && (
         <>
           <div className="layers-panel__title">Camadas</div>
@@ -124,14 +128,16 @@ export function LayersPanel({ layers, tables, onAddLayer, onFocusTable, onAutola
             <input type="checkbox" checked={fieldLineageVisible} onChange={toggleFieldLineageVisible} />
             Mostrar linhagem de campos
           </label>
-          <button
-            type="button"
-            className={`layers-panel__lineage-btn ${lineageMode ? 'is-active' : ''}`}
-            onClick={toggleLineageMode}
-            title="Editar linhagem nas bordas das tabelas"
-          >
-            {lineageMode ? '● Modo linhagem (ativo)' : '○ Modo linhagem'}
-          </button>
+          <Tooltip label="Editar linhagem nas bordas das tabelas">
+            <button
+              type="button"
+              className={`layers-panel__lineage-btn ${lineageMode ? 'is-active' : ''}`}
+              onClick={toggleLineageMode}
+            >
+              <Dot filled={lineageMode} className="icon-inline" size={10} />
+              {lineageMode ? ' Modo linhagem (ativo)' : ' Modo linhagem'}
+            </button>
+          </Tooltip>
           {lineageMode && (
             <p className="layers-panel__hint">
               Arraste entre os pontos nas bordas. Relacionamentos desligam automaticamente.
@@ -151,15 +157,16 @@ export function LayersPanel({ layers, tables, onAddLayer, onFocusTable, onAutola
           <ul className="layers-panel__tables">
             {filteredTables.map((t) => (
               <li key={t.id}>
-                <button
-                  type="button"
-                  className="layers-panel__table-btn"
-                  onClick={() => onFocusTable(t.id)}
-                  onDoubleClick={() => onFocusTable(t.id)}
-                  title="Clique para ir à tabela no canvas"
-                >
-                  {t.id}
-                </button>
+                <Tooltip label="Clique para ir à tabela no canvas">
+                  <button
+                    type="button"
+                    className="layers-panel__table-btn"
+                    onClick={() => onFocusTable(t.id)}
+                    onDoubleClick={() => onFocusTable(t.id)}
+                  >
+                    {t.id}
+                  </button>
+                </Tooltip>
               </li>
             ))}
             {filteredTables.length === 0 && (

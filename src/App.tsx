@@ -36,10 +36,17 @@ import { classifyChildFks } from './dsl/rolename';
 import { propagateKeyRename, keepSeparateKeyRename } from './dsl/propagateKeyRename';
 import { RenameConfirmModal } from './editor/RenameConfirmModal';
 import { resolveTableId, tableAtLine } from './dsl/lineLocate';
-import { shouldPanToTable, shouldSyncEditorTable, type FocusTableOptions } from './editor/syncEditorCanvas';
+import {
+  shouldPanToTable,
+  shouldSyncCursorLine,
+  shouldSyncEditorTable,
+  type FocusTableOptions,
+} from './editor/syncEditorCanvas';
 import { captureDiagramPng, downloadDataUrl } from './exportPng';
 import { ExportMenu } from './ExportMenu';
 import { ProjectSwitcher } from './ProjectSwitcher';
+import { Undo, Redo } from './icons';
+import { Tooltip } from './Tooltip';
 import { pinnedCreatedMessage } from './projectMessages';
 import { exportInputL2Warning } from './exportWarnings';
 import * as api from './api';
@@ -434,7 +441,7 @@ export default function App() {
     return map;
   }, [canvasView.crossRefs, canvasView.stubs]);
 
-  const editorCursorLineRef = useRef(0);
+  const editorCursorLineRef = useRef(-1);
   const editingTableRef = useRef<string | null>(null);
   const lastPanTableRef = useRef<string | null>(null);
 
@@ -657,6 +664,7 @@ export default function App() {
 
   const syncCanvasToEditorLine = useCallback(
     (line0: number) => {
+      if (!shouldSyncCursorLine(line0)) return;
       if (editorCollapsed) return;
       editorCursorLineRef.current = line0;
       const blockName = tableAtLine(dbml, line0);
@@ -1214,6 +1222,10 @@ export default function App() {
   );
 
   const handleExportOption = (opt: api.ExportOption) => {
+    if (opt.id === 'png') {
+      handlePng();
+      return;
+    }
     run(`Exportando ${opt.label}`, async () => {
       const result = await api.exportFormat(dbml, opt.format, opt.dialect);
       const files = result.files.join(', ');
@@ -1276,56 +1288,55 @@ export default function App() {
             pinnedLabel={pinnedProjectId ? projects.find((p) => p.id === pinnedProjectId)?.name : undefined}
           />
         )}
-        <button onClick={undo} disabled={!past.length} title="Desfazer (Cmd/Ctrl+Z)">
-          ↶
-        </button>
-        <button onClick={redo} disabled={!future.length} title="Refazer (Cmd/Ctrl+Shift+Z)">
-          ↷
-        </button>
-        <button className="btn-primary" onClick={handleOrganize} title="Reordena: tabelas → refs → records">
-          Organize
-        </button>
+        <Tooltip label="Desfazer (Cmd/Ctrl+Z)">
+          <button onClick={undo} disabled={!past.length} aria-label="Desfazer">
+            <Undo className="icon-inline" />
+          </button>
+        </Tooltip>
+        <Tooltip label="Refazer (Cmd/Ctrl+Shift+Z)">
+          <button onClick={redo} disabled={!future.length} aria-label="Refazer">
+            <Redo className="icon-inline" />
+          </button>
+        </Tooltip>
+        <Tooltip label="Reordena: tabelas → refs → records">
+          <button onClick={handleOrganize}>Organizar</button>
+        </Tooltip>
         <button onClick={addTable}>+ Tabela</button>
-        <button onClick={addMetadata} title="Insere o bloco de colunas de metadados padrão">
-          + Metadados
-        </button>
+        <Tooltip label="Insere o bloco de colunas de metadados padrão">
+          <button onClick={addMetadata}>+ Metadados</button>
+        </Tooltip>
         <span className="sep" />
         <button onClick={handleImport}>Importar (input/)</button>
-        <ExportMenu options={api.EXPORT_OPTIONS} onExport={handleExportOption} />
-        <button onClick={handlePng}>Export PNG</button>
+        <ExportMenu
+          options={[{ id: 'png', label: 'PNG do canvas', format: 'mermaid' }, ...api.EXPORT_OPTIONS]}
+          onExport={handleExportOption}
+        />
         <span className="sep" />
-        <button
-          className="btn-save"
-          onClick={() => handleSave()}
-          disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'idle'}
-          title="Salvar (Cmd/Ctrl+S)"
-        >
-          Salvar
-        </button>
-        <span className="toolbar__autosave">
-          <span className="toolbar__autosave-label">Auto-save</span>
+        <Tooltip label="Salvar (Cmd/Ctrl+S)">
           <button
-            type="button"
-            role="switch"
-            aria-checked={autoSave}
-            className={`toggle-switch ${autoSave ? 'is-on' : ''}`}
-            title={autoSave ? 'Auto-save ligado' : 'Auto-save desligado'}
-            onClick={() => setAutoSave((a) => !a)}
+            className="btn-save"
+            onClick={() => handleSave()}
+            disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'idle'}
           >
-            <span className="toggle-switch__knob" />
+            Salvar
           </button>
+        </Tooltip>
+        <span className="toolbar__autosave">
+          <span className="toolbar__autosave-label">Auto-salvar</span>
+          <Tooltip label={autoSave ? 'Auto-salvar ligado' : 'Auto-salvar desligado'}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoSave}
+              className={`toggle-switch ${autoSave ? 'is-on' : ''}`}
+              onClick={() => setAutoSave((a) => !a)}
+            >
+              <span className="toggle-switch__knob" />
+            </button>
+          </Tooltip>
         </span>
         <ProblemsPanel issues={modelIssues} onFocusTable={focusTableWithPan} onGoToLine={goToLine} />
-        <StatusLog status={status} logs={logs} />
-        <span className={`savestate savestate--${saveState}`}>
-          {saveState === 'saving'
-            ? 'Salvando…'
-            : saveState === 'error'
-              ? '⚠ Falha ao salvar'
-              : saveState === 'dirty'
-                ? '● Não salvo'
-                : 'Salvo ✓'}
-        </span>
+        <StatusLog status={status} saveState={saveState} logs={logs} />
       </header>
 
       <main

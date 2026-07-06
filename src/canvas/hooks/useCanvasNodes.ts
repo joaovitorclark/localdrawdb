@@ -175,7 +175,7 @@ export function useCanvasNodes(
           deletable: true,
           hidden: opts.hiddenTables.has(t.id),
           style: {
-            ...(opts.dimmedTables.has(t.id) ? { opacity: 0.35 } : {}),
+            ...(opts.dimmedTables.has(t.id) ? { opacity: 0.45 } : {}),
             ...(sizes[t.id]?.width != null ? { width: sizes[t.id].width } : {}),
             ...(sizes[t.id]?.height != null ? { height: sizes[t.id].height } : {}),
           },

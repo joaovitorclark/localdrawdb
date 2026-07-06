@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ExportOption } from './api';
+import { Chevron } from './icons';
 
 type Props = {
   options: ExportOption[];
@@ -35,7 +36,7 @@ export function ExportMenu({ options, onExport }: Props) {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        Exportar <span aria-hidden="true">▾</span>
+        Exportar <Chevron dir="down" className="icon-inline" size={14} />
       </button>
       {open ? (
         <div className="toolbar__export-dropdown" role="menu">
@@ -43,7 +44,6 @@ export function ExportMenu({ options, onExport }: Props) {
             <button
               key={opt.id}
               type="button"
-              role="menuitem"
               className="toolbar__export-item"
               onClick={() => {
                 setOpen(false);

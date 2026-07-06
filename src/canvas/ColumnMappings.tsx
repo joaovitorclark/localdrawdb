@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ParsedFieldLineage, TableView } from '../dsl/parse';
+import { Close, Doc } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 type MappingKey = {
   sourceTable: string;
@@ -98,21 +100,27 @@ export function ColumnMappings({ tables, mappings, targetTable, targetColumn, on
             </button>
             {(m.note || m.ref) && (
               <div className="field-lineage-panel__meta">
-                {m.note && <span title={m.note}>📝 {m.note}</span>}
-                {m.ref && <span title={m.ref}>📄 {m.ref}</span>}
+                {m.note && <span title={m.note}>{m.note}</span>}
+                {m.ref && (
+                  <span title={m.ref}>
+                    <Doc className="icon-inline" size={12} /> {m.ref}
+                  </span>
+                )}
               </div>
             )}
-            <button
-              type="button"
-              className="field-lineage-panel__del"
-              title="Remover mapeamento"
-              onClick={() => {
-                onRemove(m.sourceTable, m.sourceColumn, targetColumn);
-                if (keysMatch(editing, m)) resetForm();
-              }}
-            >
-              ✕
-            </button>
+            <Tooltip label="Remover mapeamento">
+              <button
+                type="button"
+                className="field-lineage-panel__del"
+                aria-label="Remover mapeamento"
+                onClick={() => {
+                  onRemove(m.sourceTable, m.sourceColumn, targetColumn);
+                  if (keysMatch(editing, m)) resetForm();
+                }}
+              >
+                <Close className="icon-inline" size={14} />
+              </button>
+            </Tooltip>
           </li>
         ))}
         {forColumn.length === 0 && <li className="field-lineage-panel__empty">Nenhum mapeamento para este campo</li>}

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { CanvasPage } from '../api';
 import { ALL_PAGE_ID } from './scaleLimits';
+import { Chevron } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 type Props = {
   pages: CanvasPage[];
@@ -12,11 +14,17 @@ type Props = {
 
 const COLLAPSE_KEY = 'localdrawdb.pagesPanelCollapsed';
 
+export function parsePagesCollapsed(raw: string | null): boolean {
+  if (raw === '1') return true;
+  if (raw === '0') return false;
+  return true;
+}
+
 function loadCollapsed(): boolean {
   try {
-    return localStorage.getItem(COLLAPSE_KEY) === '1';
+    return parsePagesCollapsed(localStorage.getItem(COLLAPSE_KEY));
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -63,14 +71,16 @@ export function PagesPanel({
 
   return (
     <div className={`pages-panel ${collapsed ? 'is-collapsed' : ''}`}>
-      <button
-        type="button"
-        className="pages-panel__collapse"
-        onClick={toggleCollapsed}
-        title={collapsed ? 'Expandir páginas' : 'Recolher páginas'}
-      >
-        {collapsed ? '▸ Páginas' : '▾ Páginas no canvas'}
-      </button>
+      <Tooltip label={collapsed ? 'Expandir páginas' : 'Recolher páginas'}>
+        <button
+          type="button"
+          className="pages-panel__collapse"
+          onClick={toggleCollapsed}
+        >
+          <Chevron dir={collapsed ? 'right' : 'down'} className="icon-inline" size={14} />
+          {collapsed ? ' Páginas' : ' Páginas no canvas'}
+        </button>
+      </Tooltip>
       {!collapsed && (
         <>
           <p className="pages-panel__hint">

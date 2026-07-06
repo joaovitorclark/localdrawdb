@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ProjectMeta } from './api';
+import { Check, Chevron, Close, Dot, Duplicate, Edit, Pin } from './icons';
+import { Tooltip } from './Tooltip';
 
 type Props = {
   projects: ProjectMeta[];
@@ -88,34 +90,39 @@ export function ProjectSwitcher({
         className="project-switcher project-switcher--pinned"
         title="Instância fixada neste projeto (porta dedicada)"
       >
-        <span className="project-switcher__pin" aria-hidden="true">📌</span>
+        <Pin className="icon-inline project-switcher__pin" size={14} />
         <span className="project-switcher__name">{pinnedLabel}</span>
-        <button
-          type="button"
-          className="project-switcher__action project-switcher__new-pinned"
-          title="Novo projeto"
-          onClick={handleCreate}
-        >
-          +
-        </button>
+        <Tooltip label="Novo projeto">
+          <button
+            type="button"
+            className="project-switcher__action project-switcher__new-pinned"
+            aria-label="Novo projeto"
+            onClick={handleCreate}
+          >
+            +
+          </button>
+        </Tooltip>
       </div>
     );
   }
 
   return (
     <div className="project-switcher" ref={rootRef}>
-      <button
-        type="button"
-        className="project-switcher__trigger"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        title="Trocar projeto"
-      >
-        {isDirty && <span className="project-switcher__dirty" aria-label="Não salvo">●</span>}
-        <span className="project-switcher__name">{current?.name ?? '…'}</span>
-        <span aria-hidden="true">▾</span>
-      </button>
+      <Tooltip label="Trocar projeto">
+        <button
+          type="button"
+          className="project-switcher__trigger"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {isDirty && (
+            <Dot filled className="icon-inline project-switcher__dirty" size={10} aria-label="Não salvo" />
+          )}
+          <span className="project-switcher__name">{current?.name ?? '…'}</span>
+          <Chevron dir="down" className="icon-inline" size={14} />
+        </button>
+      </Tooltip>
 
       {open && (
         <div className="project-switcher__dropdown" role="menu">
@@ -131,36 +138,42 @@ export function ProjectSwitcher({
                     onClick={() => handleSwitch(proj.id)}
                   >
                     <span className="project-switcher__check" aria-hidden="true">
-                      {isActive ? '✓' : ''}
+                      {isActive ? <Check className="icon-inline" size={14} /> : null}
                     </span>
                     {proj.name}
                   </button>
                   <div className="project-switcher__row-actions">
-                    <button
-                      type="button"
-                      className="project-switcher__action"
-                      title="Renomear"
-                      onClick={() => handleRename(proj)}
-                    >
-                      ✎
-                    </button>
-                    <button
-                      type="button"
-                      className="project-switcher__action"
-                      title="Duplicar"
-                      onClick={() => handleDuplicate(proj)}
-                    >
-                      ⧉
-                    </button>
-                    {projects.length > 1 && (
+                    <Tooltip label="Renomear">
                       <button
                         type="button"
-                        className="project-switcher__action project-switcher__action--delete"
-                        title="Excluir"
-                        onClick={() => handleDelete(proj)}
+                        className="project-switcher__action"
+                        aria-label="Renomear"
+                        onClick={() => handleRename(proj)}
                       >
-                        ✕
+                        <Edit className="icon-inline" size={14} />
                       </button>
+                    </Tooltip>
+                    <Tooltip label="Duplicar">
+                      <button
+                        type="button"
+                        className="project-switcher__action"
+                        aria-label="Duplicar"
+                        onClick={() => handleDuplicate(proj)}
+                      >
+                        <Duplicate className="icon-inline" size={14} />
+                      </button>
+                    </Tooltip>
+                    {projects.length > 1 && (
+                      <Tooltip label="Excluir">
+                        <button
+                          type="button"
+                          className="project-switcher__action project-switcher__action--delete"
+                          aria-label="Excluir"
+                          onClick={() => handleDelete(proj)}
+                        >
+                          <Close className="icon-inline" size={14} />
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                 </div>

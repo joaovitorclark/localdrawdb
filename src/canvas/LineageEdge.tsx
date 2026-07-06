@@ -1,4 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from 'reactflow';
+import { Close } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 export type LineageEdgeData = {
   highlighted?: boolean;
@@ -33,7 +35,15 @@ export function LineageEdge({
           >
             ⟿ derivado de
             {selected && data?.onRemove && (
-              <button className="edge-delete" title="Remover linhagem" onClick={(e) => { e.stopPropagation(); data.onRemove?.(); }}>✕</button>
+              <Tooltip label="Remover linhagem">
+                <button
+                  className="edge-delete"
+                  aria-label="Remover linhagem"
+                  onClick={(e) => { e.stopPropagation(); data.onRemove?.(); }}
+                >
+                  <Close className="icon-inline" size={14} />
+                </button>
+              </Tooltip>
             )}
           </div>
         </EdgeLabelRenderer>

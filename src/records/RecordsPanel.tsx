@@ -3,6 +3,7 @@ import type { ParsedRecords } from '../dsl/records';
 import { getColumnSettings, setColumnSetting, setTableOrRecordsNote } from '../dsl/edit';
 import { useInteraction } from '../store/interaction';
 import type { RefView, TableView } from '../dsl/parse';
+import { Chevron } from '../icons';
 
 type Props = {
   records: ParsedRecords[];
@@ -11,6 +12,20 @@ type Props = {
   dbml: string;
   onApply: (next: string) => void;
 };
+
+export const RECORDS_OPEN_KEY = 'localdrawdb.recordsPanelOpen';
+
+export function parseRecordsOpen(raw: string | null): boolean {
+  return raw === '1';
+}
+
+export function loadRecordsOpen(): boolean {
+  try {
+    return parseRecordsOpen(localStorage.getItem(RECORDS_OPEN_KEY));
+  } catch {
+    return false;
+  }
+}
 
 /** Constraints da tabela ativa, derivadas das colunas (pk/notNull) e dos refs (FK). */
 function tableConstraints(table: TableView | undefined, refs: RefView[]) {
@@ -64,7 +79,7 @@ function NoteField({
 }
 
 export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(loadRecordsOpen);
   const selectedTable = useInteraction((s) => s.selectedTable);
   const selectedColumn = useInteraction((s) => s.selectedColumn);
   const selectedGroup = useInteraction((s) => s.selectedGroup);
@@ -142,10 +157,23 @@ export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
     );
   };
 
+  const toggleOpen = () => {
+    setOpen((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(RECORDS_OPEN_KEY, next ? '1' : '0');
+      } catch {
+        // no-op: persistência indisponível
+      }
+      return next;
+    });
+  };
+
   return (
     <div className={`records-panel ${open ? 'is-open' : ''}`}>
-      <button className="records-panel__toggle" onClick={() => setOpen((o) => !o)}>
-        {open ? '▾' : '▸'} Dados (amostra) · {Math.max(panelCount, 1)} tabela(s)
+      <button className="records-panel__toggle" onClick={toggleOpen}>
+        <Chevron dir={open ? 'down' : 'right'} className="icon-inline" size={14} />
+        {' '}Dados (amostra) · {Math.max(panelCount, 1)} tabela(s)
       </button>
       {open && (
         <div className="records-panel__body">

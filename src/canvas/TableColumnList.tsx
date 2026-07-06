@@ -7,6 +7,7 @@ import {
   COLUMN_VIRTUAL_VIEW_ROWS,
 } from './scaleLimits';
 import { useTableScrollStore } from './tableScrollStore';
+import { Key } from '../icons';
 
 const VIEW_H = COLUMN_VIRTUAL_VIEW_ROWS * COLUMN_VIRTUAL_ROW_H;
 
@@ -81,7 +82,7 @@ function ColumnRowContent({
             onStartEdit(c.name);
           }}
         >
-          {c.pk ? '🔑 ' : ''}
+          {c.pk ? <Key className="icon-inline col-pk-icon" size={12} /> : null}
           {c.name}
           {c.notNull ? <span className="col-nn">NN</span> : null}
         </span>
