@@ -1,6 +1,6 @@
 // Mutações de texto do DBML ancoradas no bloco da tabela (via splitDbmlBlocks).
 // Princípio: nomes de coluna são únicos numa tabela -> localização robusta por nome.
-import { splitDbmlBlocks } from './blocks';
+import { splitDbmlBlocks, normalizeEol } from './blocks';
 import { quoteDbmlNote } from './dbmlNotes';
 import { splitTableColumn } from './dbmlClean';
 import { dbmlIdent } from './parse';
@@ -194,6 +194,7 @@ export function renameColumnAllRefs(
   oldName: string,
   newName: string,
 ): string {
+  src = normalizeEol(src); // CRLF-safe: `parseFieldLine`/regexes de campo assumem LF
   const old = stripQuotes(oldName);
   const neu = stripQuotes(newName);
   if (!old || !neu || old === neu) return src;
@@ -263,6 +264,7 @@ function tableIdReplaceRegex(old: string): RegExp {
  * Casa o token qualificado inteiro — nunca substitui só o prefixo schema (ex.: silver em silver.dim_x).
  */
 export function renameTable(src: string, tableId: string, newName: string): string {
+  src = normalizeEol(src); // CRLF-safe: consistência com a detecção e a contagem de refs
   const old = stripQuotes(tableId);
   const neu = stripQuotes(newName.trim());
   if (!old || !neu || old === neu) return src;

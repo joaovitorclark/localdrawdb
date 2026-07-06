@@ -19,6 +19,13 @@ export type BlockType =
 
 export type Block = { type: BlockType; name?: string; text: string; lineStart?: number };
 
+/**
+ * Normaliza fins de linha para `\n` (converte CRLF e CR isolado do Windows/legado).
+ * Crítico para os regexes de campo/rename: em JS, `.` não casa `\r` e `$` (sem flag `m`)
+ * não casa antes de `\r`, então `\r` residual quebra `parseFieldLine` e a detecção de rename.
+ */
+export const normalizeEol = (src: string): string => src.replace(/\r\n?/g, '\n');
+
 /** Delta de chaves numa linha, ignorando strings ('...'/"...") e comentário //. */
 function braceDelta(line: string): number {
   let depth = 0;

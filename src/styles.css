@@ -27,11 +27,14 @@ body,
   /* Impede o rubber-band do macOS de revelar o fundo escuro do body quando a
      rolagem de um painel interno encadeia até o documento (faixa preta). */
   overscroll-behavior: none;
+  /* v15-06: fundo revelável = cor do canvas (não o escuro do app). Em telas pequenas
+     ou no overscroll, a área atrás do conteúdo "disfarça" como continuação do canvas.
+     Toolbar (navy) e editor (CodeMirror dark) têm fundo próprio e não são afetados. */
+  background: var(--canvas-bg);
 }
 
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  background: var(--bg);
   color: var(--text);
 }
 
@@ -131,6 +134,66 @@ body {
   margin-left: auto;
   color: var(--muted);
   font-size: 12px;
+}
+/* v15-04: status vira botão (dropdown de logs) mas mantém aparência de texto na toolbar */
+.status-log__btn {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+.status-log__btn:hover,
+.status-log__btn.is-open {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border);
+}
+.status-log__pop {
+  z-index: 1000;
+  min-width: 280px;
+  max-width: min(460px, calc(100vw - 16px));
+  max-height: 340px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #c4ccd6;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  color: #1a2027;
+}
+.status-log__empty {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: #64748b;
+}
+.status-log__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.status-log__item {
+  display: flex;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.status-log__item:hover {
+  background: #f1f5f9;
+}
+.status-log__time {
+  flex-shrink: 0;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+.status-log__msg {
+  flex: 1;
+  color: #1e293b;
+  word-break: break-word;
 }
 .savestate {
   font-size: 12px;
@@ -429,6 +492,8 @@ body {
 /* Shell do nó (React Flow mede este bloco) */
 .table-node-shell {
   position: relative;
+  /* v15-01: preenche a altura do nó quando fixada (resize vertical); auto caso contrário. */
+  height: 100%;
 }
 .table-node-shell--lineage {
   padding: 10px;
@@ -454,19 +519,27 @@ body {
   font-size: 12px;
   color: #1a2027;
   overflow: hidden;
+  /* v15-01: coluna flex para o resize vertical — cabeçalho fixo, lista de colunas
+     preenche o resto e rola quando a altura fixa comprime o conteúdo. Com altura
+     automática (sem resize), `height:100%` resolve para o conteúdo (sem efeito). */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
-/* Handle de redimensionamento (largura) na borda direita da tabela (#8) */
-.table-resize-handle {
-  width: 10px !important;
-  height: 32px !important;
-  right: -5px !important;
+/* v15-01: handle de resize no canto inferior-direito (diagonal) */
+.table-resize-handle--corner {
+  width: 14px !important;
+  height: 14px !important;
+  right: -4px !important;
+  bottom: -4px !important;
   border-radius: 3px;
-  cursor: ew-resize;
+  cursor: nwse-resize;
 }
-.table-node-shell:hover .table-resize-handle {
+.table-node-shell:hover .table-resize-handle--corner {
   background: rgba(22, 163, 74, 0.35) !important;
 }
-.table-resize-handle:hover {
+.table-resize-handle--corner:hover {
   background: rgba(22, 163, 74, 0.7) !important;
 }
 .table-node__col-count {
@@ -485,6 +558,7 @@ body {
   align-items: center;
   gap: 6px;
   position: relative;
+  flex: 0 0 auto; /* v15-01: cabeçalho não encolhe sob altura fixa */
 }
 .table-node__title {
   flex: 1;
@@ -651,17 +725,27 @@ body {
   color: var(--brand-green);
 }
 
-/* Handles por coluna: ocultos até o hover da tabela */
+/* Handles por coluna: ocultos até o hover da tabela.
+   v15-02: z-index acima da barra de rolagem interna (10px) para permanecerem clicáveis. */
 .col-handle {
   width: 9px;
   height: 9px;
   background: var(--brand-green);
   border: 1px solid #fff;
   opacity: 0;
+  z-index: 5;
   transition: opacity 0.12s ease;
 }
 .table-node:hover .col-handle {
   opacity: 1;
+}
+/* Campo selecionado: handle sempre visível, maior e acima da barra — o arraste da
+   ligação tem prioridade sobre a rolagem naquela linha. */
+.col-row.is-selected .col-handle {
+  opacity: 1;
+  width: 11px;
+  height: 11px;
+  z-index: 7;
 }
 
 /* Portas de linhagem (draw.io): na borda do shell, não sobre colunas */
@@ -1549,76 +1633,75 @@ body {
   color: #64748b;
 }
 
-/* Painel de problemas do modelo (canto inferior direito do canvas, arrastável) */
-.problems-panel {
-  position: absolute;
-  right: 12px;
-  bottom: 36px;
-  left: auto;
-  z-index: 9;
-  max-width: 320px;
-  max-height: 200px;
-  background: #fff;
-  border: 1px solid #c4ccd6;
-  border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
-  font-size: 11px;
-  overflow: hidden;
+/* v15-03: badge de problemas no topo (toolbar) + popover via portal */
+.problems-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto; /* inicia o grupo alinhado à direita da toolbar */
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1;
+  white-space: nowrap;
 }
-.problems-panel.is-collapsed {
-  max-height: none;
-}
-.problems-panel__head {
-  display: flex;
-  align-items: stretch;
-  background: #fef3c7;
-}
-.problems-panel__grip {
-  flex-shrink: 0;
-  padding: 6px 8px;
-  border: none;
-  border-right: 1px solid #fde68a;
-  background: transparent;
-  color: #92400e;
-  cursor: grab;
+.problems-badge__icon {
   font-size: 12px;
   line-height: 1;
 }
-.problems-panel__grip:active {
-  cursor: grabbing;
+.problems-badge--error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
 }
-.problems-panel__toggle {
-  display: block;
-  flex: 1;
-  text-align: left;
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
-  color: #92400e;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 11px;
+.problems-badge--error:hover,
+.problems-badge--error.is-open {
+  background: #fee2e2;
+  border-color: #f87171;
 }
-.problems-panel__list {
+.problems-badge--warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #a16207;
+}
+.problems-badge--warn:hover,
+.problems-badge--warn.is-open {
+  background: #fef3c7;
+  border-color: #fbbf24;
+}
+/* Popover ancorado ao badge (portal no body, acima do canvas) */
+.problems-pop {
+  z-index: 1000;
+  min-width: 260px;
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: 320px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #c4ccd6;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.problems-pop__list {
   list-style: none;
   margin: 0;
   padding: 4px 0;
-  max-height: 160px;
-  overflow-y: auto;
 }
-.problems-panel__row {
+.problems-pop__row {
   display: flex;
   align-items: flex-start;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 5px 10px;
 }
-.problems-panel__item--error .problems-panel__msg {
+.problems-pop__item--error .problems-pop__msg {
   color: #b91c1c;
 }
-.problems-panel__item--warn .problems-panel__msg {
+.problems-pop__item--warn .problems-pop__msg {
   color: #a16207;
 }
-.problems-panel__goto {
+.problems-pop__goto {
   flex-shrink: 0;
   padding: 2px 6px;
   border: 1px solid #cbd5e1;
@@ -1628,10 +1711,10 @@ body {
   cursor: pointer;
   color: #334155;
 }
-.problems-panel__goto:hover {
+.problems-pop__goto:hover {
   background: #e2e8f0;
 }
-.problems-panel__msg {
+.problems-pop__msg {
   flex: 1;
   font-size: 11px;
   line-height: 1.35;
@@ -1657,40 +1740,60 @@ body {
   opacity: 0.35;
   transition: opacity 0.12s ease;
 }
-/* Colunas com scroll interno (tabelas largas) — altura fixa por linha alinha handles/FK */
-.table-node__cols--scroll {
-  overflow-y: scroll;
+/* v15-01: a lista de colunas preenche o espaço restante do nó (coluna flex) e rola quando
+   a altura fixa (resize vertical) comprime o conteúdo — inclusive em tabelas ≤48 colunas.
+   Com altura automática, `flex-grow` não tem espaço extra → tamanho pelo conteúdo (sem barra). */
+.table-node__cols {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: auto;
-  scrollbar-color: rgba(19, 40, 75, 0.3) #e2e8f0;
+}
+/* Colunas com scroll interno (tabelas largas) — altura fixa por linha alinha handles/FK.
+   v15-02: barra fina e ESTÁVEL. `scrollbar-gutter: stable` reserva a canaleta à direita
+   (fora da coluna dos col-handle de origem), então a barra não "pisca/some" entre mac
+   (overlay) e Windows (barra permanente ~17px), e não cobre o handle de ligação. */
+.table-node__cols--scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(19, 40, 75, 0.32) transparent;
   border-top: 1px solid #e2e8f0;
   border-bottom: 1px solid #e2e8f0;
 }
 .table-node__cols--scroll::-webkit-scrollbar {
-  width: 16px;
+  width: 10px;
 }
 .table-node__cols--scroll::-webkit-scrollbar-track {
-  background: #eef2f7;
+  background: transparent;
 }
 .table-node__cols--scroll::-webkit-scrollbar-thumb {
-  background: rgba(19, 40, 75, 0.3);
+  background: rgba(19, 40, 75, 0.28);
   border-radius: 8px;
-  border: 3px solid #eef2f7;
-  min-height: 32px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 28px;
   transition: background 0.12s ease;
 }
 .table-node__cols--scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(19, 40, 75, 0.55);
+  background: rgba(19, 40, 75, 0.5);
 }
 .table-node__cols--scroll::-webkit-scrollbar-thumb:active {
   background: var(--brand-green, #16a34a);
 }
-/* Tabela selecionada: barra de rolagem opaca/destacada */
+/* Tabela selecionada: barra visível, opaca e estável (dá pra rolar tranquilo) */
 .react-flow__node.selected .table-node__cols--scroll {
   scrollbar-color: var(--brand-navy, #13284b) #e2e8f0;
 }
+.react-flow__node.selected .table-node__cols--scroll::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
 .react-flow__node.selected .table-node__cols--scroll::-webkit-scrollbar-thumb {
   background: var(--brand-navy, #13284b);
+  border-color: #e2e8f0;
 }
 .react-flow__node.selected .table-node__cols--scroll::-webkit-scrollbar-thumb:hover {
   background: #1f3a6b;
@@ -1783,57 +1886,8 @@ body {
   opacity: 1;
 }
 
-/* Painel mapeamento campo-a-campo (v9) */
-.field-lineage-panel-wrap {
-  position: absolute;
-  bottom: 36px;
-  right: 12px;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0;
-  max-width: min(300px, calc(100vw - 24px));
-}
-.pane--canvas:has(.records-panel.is-open) .field-lineage-panel-wrap {
-  bottom: min(45%, 320px);
-}
-.field-lineage-panel {
-  position: static;
-  width: 100%;
-  max-height: min(38vh, 280px);
-  overflow: auto;
-  background: #fff;
-  border: 1px solid #c4ccd6;
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
-  padding: 10px 12px;
-  font-size: 11px;
-  color: #13284b;
-}
-.field-lineage-panel__toggle {
-  align-self: stretch;
-  text-align: left;
-  background: #f3f6fa;
-  color: #13284b;
-  border: 1px solid #c4ccd6;
-  border-radius: 8px;
-  padding: 6px 12px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-.field-lineage-panel-wrap.is-open .field-lineage-panel__toggle {
-  border-radius: 8px 8px 0 0;
-  border-bottom: 1px solid #e2e8f0;
-  box-shadow: none;
-}
-.field-lineage-panel__toggle:hover {
-  background: #e8eef5;
-}
+/* Mapeamento campo-a-campo (v9) — classes reaproveitadas em ColumnMappings (L2 unificado).
+   O painel flutuante e seu toggle/wrapper foram removidos no v17; ver .column-panel__mappings. */
 .field-lineage-panel__head {
   display: flex;
   align-items: baseline;
@@ -2006,15 +2060,6 @@ body {
   display: flex;
   flex-direction: column;
   z-index: 5;
-}
-.pane--canvas:has(.records-panel.is-open) .problems-panel {
-  bottom: min(45%, 320px);
-}
-.pane--canvas:has(.field-lineage-panel-wrap.is-open) .problems-panel {
-  bottom: calc(36px + min(38vh, 280px) + 36px);
-}
-.pane--canvas:has(.records-panel.is-open):has(.field-lineage-panel-wrap.is-open) .problems-panel {
-  bottom: min(45%, 320px);
 }
 .records-panel__toggle {
   text-align: left;

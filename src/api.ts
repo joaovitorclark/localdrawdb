@@ -1,8 +1,39 @@
 // Cliente da API /api (mesma origem em prod; proxy do Vite em dev).
 
+/**
+ * Normaliza fins de linha do DBML para `\n` ao carregar (choke point único).
+ * No Windows o arquivo pode vir com CRLF; manter LF em memória evita bugs de rename
+ * (regexes de campo/diff assumem `\n`). O primeiro save reescreve o arquivo em LF.
+ */
+const normalizeDbmlEol = (dbml: string): string => dbml.replace(/\r\n?/g, '\n');
+
 export type Project = { dbml: string; canvas: CanvasState };
 export type Layer = { id: string; name: string; color: string };
 export type LineageLink = { source: string; target: string };
+
+/** Dimensões por tabela quando redimensionada (px). Ambas opcionais. */
+export type TableSize = { width?: number; height?: number };
+
+/**
+ * Migra o formato legado de `sizes` (número = só largura) para `{ width, height }`.
+ * Choke point único no load; evita repetir a migração em cada `setSizes`.
+ */
+export function normalizeSizes(
+  raw: Record<string, number | TableSize> | undefined,
+): Record<string, TableSize> {
+  const out: Record<string, TableSize> = {};
+  if (!raw) return out;
+  for (const [id, v] of Object.entries(raw)) {
+    if (typeof v === 'number') out[id] = { width: v };
+    else if (v && typeof v === 'object') {
+      const s: TableSize = {};
+      if (typeof v.width === 'number') s.width = v.width;
+      if (typeof v.height === 'number') s.height = v.height;
+      out[id] = s;
+    }
+  }
+  return out;
+}
 
 export type CanvasPage = {
   id: string;
@@ -13,8 +44,8 @@ export type CanvasPage = {
 
 export type CanvasState = {
   positions?: Record<string, { x: number; y: number }>;
-  /** Largura por tabela quando redimensionada (px). */
-  sizes?: Record<string, number>;
+  /** Dimensões por tabela quando redimensionada (px). Aceita número legado (só largura). */
+  sizes?: Record<string, number | TableSize>;
   colors?: Record<string, string>;
   layers?: Record<string, string>; // tableId -> layerId
   customLayers?: Layer[];
@@ -163,7 +194,8 @@ async function del<T>(url: string): Promise<T> {
 export async function loadProject(): Promise<Project> {
   const res = await fetch('/api/project');
   const j = (await res.json()) as { dbml: string; canvas: CanvasState };
-  return { dbml: j.dbml ?? '', canvas: j.canvas ?? {} };
+  const canvas = j.canvas ?? {};
+  return { dbml: normalizeDbmlEol(j.dbml ?? ''), canvas: { ...canvas, sizes: normalizeSizes(canvas.sizes) } };
 }
 
 export async function saveProject(dbml: string, canvas: CanvasState): Promise<void> {
@@ -199,7 +231,8 @@ export const activateProject = (id: string): Promise<void> =>
 
 export async function loadProjectById(id: string): Promise<Project> {
   const j = await get<{ dbml: string; canvas: CanvasState }>(`/api/projects/${id}`);
-  return { dbml: j.dbml ?? '', canvas: j.canvas ?? {} };
+  const canvas = j.canvas ?? {};
+  return { dbml: normalizeDbmlEol(j.dbml ?? ''), canvas: { ...canvas, sizes: normalizeSizes(canvas.sizes) } };
 }
 
 export const saveProjectById = (id: string, dbml: string, canvas: CanvasState): Promise<void> =>

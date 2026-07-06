@@ -53,10 +53,11 @@ function TableNodeImpl({ data }: { data: TableNodeData }) {
     >
       {showLineagePorts && <LineagePorts />}
       <NodeResizeControl
-        position="right"
+        position="bottom-right"
         minWidth={200}
-        onResizeEnd={(_, params) => actions.onResizeTable(data.id, params.width)}
-        className="table-resize-handle"
+        minHeight={120}
+        onResizeEnd={(_, params) => actions.onResizeTable(data.id, params.width, params.height)}
+        className="table-resize-handle table-resize-handle--corner"
         style={{ background: 'transparent', border: 'none' }}
       />
       <div className="table-node">

@@ -1,5 +1,6 @@
 // Análise de renames para o commit: o que mudou e quantas referências cada rename toca.
 import { detectRenames, type DetectedRename } from './renameDetect';
+import { normalizeEol } from './blocks';
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const stripQuotes = (s: string) => s.replace(/["`]/g, '').trim();
@@ -8,6 +9,8 @@ export type RenameImpact = { rename: DetectedRename; refCount: number; affectsRe
 
 /** Conta ocorrências que a propagação tocaria, fora da definição da própria entidade. */
 export function countRenameRefs(src: string, rename: DetectedRename): number {
+  src = normalizeEol(src); // CRLF-safe: contagem alinhada ao replace real
+
   if (rename.kind === 'table') {
     const old = stripQuotes(rename.oldId);
     const re = new RegExp(`(?<![\\w.])${escapeRegex(old)}(?![\\w])`, 'g');

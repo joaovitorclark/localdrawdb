@@ -20,7 +20,7 @@ import { useCanvasEdges } from './hooks/useCanvasEdges';
 import { useCanvasNodes, type NodeExtras, type NodeOpts, type Positions } from './hooks/useCanvasNodes';
 import { useInteraction } from '../store/interaction';
 import type { ParseResult, ParsedFieldLineage } from '../dsl/parse';
-import type { LineageLink } from '../api';
+import type { LineageLink, TableSize } from '../api';
 import { DEFAULT_LINEAGE_SOURCE, DEFAULT_LINEAGE_TARGET, isLineageHandle, pickLineageHandles } from './lineageHandles';
 import { diagramOverviewBounds, focusFieldMappingInView, focusTableInView } from './focusTableView';
 import { SelectionBar } from './SelectionBar';
@@ -86,7 +86,7 @@ type Props = {
   /** Cor de cabeçalho + metadados pré-computados por tabela (memoização dos nós). */
   nodeExtras: NodeExtras;
   positions: Positions;
-  sizes: Record<string, number>;
+  sizes: Record<string, TableSize>;
   onPositionsChange: (p: Positions) => void;
   onCreateRef: (a: string, ac: string, b: string, bc: string) => void;
   onRemoveRef: (a: string, ac: string, b: string, bc: string) => void;
