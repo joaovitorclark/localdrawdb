@@ -41,10 +41,23 @@ function ColumnRowContent({
   onCancelEdit,
 }: ColumnRowProps) {
   const isSel = selectedColumn === c.name;
+  // Seleção no pointerup com tolerância de distância: o d3-drag do React Flow
+  // suprime o evento `click` ao menor movimento do mouse (jitter comum no Windows),
+  // então não dá para depender de onClick para selecionar a coluna.
+  const downPos = useRef<{ x: number; y: number } | null>(null);
+  const isInteractiveChild = (target: EventTarget | null) =>
+    !!(target as HTMLElement | null)?.closest?.('.col-handle, .col-edit');
   return (
     <div
       className={`col-row${scrollable ? ' col-row--scroll' : ''} ${c.pk ? 'is-pk' : ''} ${isSel ? 'is-selected' : ''}`}
-      onClick={(e) => {
+      onPointerDown={(e) => {
+        downPos.current = isInteractiveChild(e.target) ? null : { x: e.clientX, y: e.clientY };
+      }}
+      onPointerUp={(e) => {
+        const d = downPos.current;
+        downPos.current = null;
+        if (!d || isInteractiveChild(e.target)) return;
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return; // foi drag
         e.stopPropagation();
         onSelect(c.name, e.altKey);
       }}

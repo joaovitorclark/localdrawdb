@@ -240,6 +240,20 @@ export function Canvas(props: Props) {
   const showLineageEdges = lineageVisible;
   const [connecting, setConnecting] = useState(false);
 
+  // Esc desseleciona coluna e seleção do canvas (fora de inputs — o editor de nome
+  // de coluna trata o próprio Escape). Complementa o onPaneClick, que não mexe na coluna.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      selectColumn(null);
+      clearCanvasSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectColumn, clearCanvasSelection]);
+
   const focusTables = useMemo(() => {
     if (selectedTableIds.length) return selectedTableIds;
     if (selectedColumn) return [selectedColumn.table];
@@ -535,13 +549,18 @@ export function Canvas(props: Props) {
         onNodeClick={(_, n) => {
           if (n.type === 'group') selectGroup(n.id.replace(/^group:/, ''));
         }}
-        onPaneClick={() => { selectColumn(null); clearCanvasSelection(); }}
+        // Clique/arrasto no pane NÃO desseleciona a coluna: o usuário pode arrastar o
+        // canvas para seguir uma ligação. A coluna sai com Esc, outra coluna ou outra seleção.
+        onPaneClick={() => { clearCanvasSelection(); }}
         onSelectionChange={onSelectionChange}
         selectionOnDrag
         selectionMode={SelectionMode.Partial}
         multiSelectionKeyCode={isMacOs() ? 'Meta' : 'Control'}
         elementsSelectable
         edgesFocusable
+        // Tolerância de jitter do mouse (Windows): até 4px de movimento ainda é clique
+        // de coluna, não drag do nó — sem isso o onClick da coluna nunca dispara.
+        nodeDragThreshold={4}
         minZoom={0.25}
         onlyRenderVisibleElements
       >

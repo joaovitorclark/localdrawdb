@@ -1230,7 +1230,11 @@ export default function App() {
       const result = await api.exportFormat(dbml, opt.format, opt.dialect);
       const files = result.files.join(', ');
       if (opt.format === 'localdrawdb') {
-        const l2Warn = exportInputL2Warning(activeModel.tables, activeModel.lineageFields ?? []);
+        const l2Warn = exportInputL2Warning(
+          activeModel.tables,
+          activeModel.lineageFields ?? [],
+          activeModel.lineage ?? [],
+        );
         return l2Warn ? `${l2Warn} — Gerado: ${files}` : `Gerado: ${files}`;
       }
       return `Gerado: ${files}`;
