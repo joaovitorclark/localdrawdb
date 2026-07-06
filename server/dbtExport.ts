@@ -82,12 +82,58 @@ function testToYaml(t: ColumnTest): string | Record<string, unknown> {
   }
 }
 
-function columnEntry(table: Table, col: Column, refs: Ref[]): Record<string, unknown> {
+function columnEntry(table: Table, col: Column, model: Model): Record<string, unknown> {
   const entry: Record<string, unknown> = { name: col.name };
+  if (col.type) entry.data_type = col.args ? `${col.type}(${col.args})` : col.type;
   if (col.note) entry.description = col.note;
-  const tests = columnTests(table, col, refs);
+  const tests = columnTests(table, col, model.refs);
   if (tests.length) entry.data_tests = tests.map(testToYaml);
+  const meta = columnLdbMeta(table, col, model);
+  if (meta) entry.meta = { localdrawdb: meta };
   return entry;
+}
+
+/** meta.localdrawdb da coluna: cor do nome e mapeamento L2 (campo→campo). */
+function columnLdbMeta(table: Table, col: Column, model: Model): Record<string, unknown> | undefined {
+  const qn = qualifiedName(table);
+  const meta: Record<string, unknown> = {};
+  const color = model.colors?.[`${qn}.${col.name}`];
+  if (color) meta.color = color;
+  const map = model.lineageFields?.find(
+    (f) => f.targetColumn === col.name && (f.targetTable === qn || f.targetTable === table.name),
+  );
+  if (map) {
+    const m: Record<string, unknown> = { table: map.sourceTable, column: map.sourceColumn };
+    if (map.note) m.note = map.note;
+    if (map.ref) m.ref = map.ref;
+    meta.map = m;
+  }
+  return Object.keys(meta).length ? meta : undefined;
+}
+
+/** meta.localdrawdb da tabela: schema, camada/grupo (com cores), cor, PK e records. */
+function tableLdbMeta(t: Table, model: Model): Record<string, unknown> | undefined {
+  const qn = qualifiedName(t);
+  const meta: Record<string, unknown> = {};
+  if (t.schema) meta.schema = t.schema;
+  if (t.layer) {
+    meta.layer = t.layer;
+    const lc = model.layerColors?.[t.layer];
+    if (lc) meta.layerColor = lc;
+  }
+  if (t.group) {
+    meta.group = t.group;
+    const gc = model.colors?.[`@${t.group}`];
+    if (gc) meta.groupColor = gc;
+  }
+  const color = model.colors?.[qn];
+  if (color) meta.color = color;
+  const pk = pkCols(t);
+  if (pk.length) meta.pk = pk;
+  if (t.records?.rows.length) {
+    meta.records = { columns: t.records.columns, rows: t.records.rows };
+  }
+  return Object.keys(meta).length ? meta : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +196,7 @@ function modelSql(t: Table, model: Model): string {
 // Documentos YAML (sources.yml / schema.yml)
 // ---------------------------------------------------------------------------
 
-function sourcesYml(schema: string, tables: Table[], refs: Ref[]): string {
+function sourcesYml(schema: string, tables: Table[], model: Model): string {
   const doc = {
     version: 2,
     sources: [
@@ -160,7 +206,9 @@ function sourcesYml(schema: string, tables: Table[], refs: Ref[]): string {
         tables: tables.map((t) => {
           const tbl: Record<string, unknown> = { name: t.name };
           if (t.note) tbl.description = t.note;
-          tbl.columns = t.columns.map((c) => columnEntry(t, c, refs));
+          const meta = tableLdbMeta(t, model);
+          if (meta) tbl.meta = { localdrawdb: meta };
+          tbl.columns = t.columns.map((c) => columnEntry(t, c, model));
           return tbl;
         }),
       },
@@ -178,7 +226,9 @@ function schemaYml(tables: Table[], model: Model): string {
       const entry: Record<string, unknown> = { name: t.name };
       if (t.note) entry.description = t.note;
       entry.config = config;
-      entry.columns = t.columns.map((c) => columnEntry(t, c, model.refs));
+      const meta = tableLdbMeta(t, model);
+      if (meta) entry.meta = { localdrawdb: meta };
+      entry.columns = t.columns.map((c) => columnEntry(t, c, model));
       return entry;
     }),
   };
@@ -205,7 +255,7 @@ export function modelToDbtFiles(model: Model): DbtFile[] {
   }
 
   for (const [schema, tables] of sourcesBySchema) {
-    files.push({ path: `models/${schema}/sources.yml`, content: sourcesYml(schema, tables, model.refs) });
+    files.push({ path: `models/${schema}/sources.yml`, content: sourcesYml(schema, tables, model) });
   }
 
   for (const [schema, tables] of modelsBySchema) {

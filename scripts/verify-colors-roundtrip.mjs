@@ -72,22 +72,50 @@ check('rodapé -- @layercolors com a camada', /^-- @layercolors$/m.test(sql) && 
 check('linhagem L1 no arquivo (@origen)', /^-- @origen: silver\.dim_cliente$/m.test(sql));
 check('linhagem L2 no arquivo (@lineage)', /^-- @lineage silver\.fato_venda$/m.test(sql));
 
-// 2) Import do arquivo em projeto temporário vazio (simula "outra pessoa").
+// 2) Import em projeto temporário vazio (simula "outra pessoa"), nos 3 formatos:
+//    SQL Oracle (v18-01), DBML nativo (v18-10) e pacote dbt (v18-11).
 const meta = await api('POST', '/api/projects', { name: `tmp-verify-colors-${Date.now()}` });
 try {
   const inputDir = path.resolve('data/projects', meta.slug, 'input');
   await fs.mkdir(inputDir, { recursive: true });
-  await fs.writeFile(path.join(inputDir, 'model_oracle.sql'), sql);
 
-  const imp = await api('POST', `/api/projects/${meta.id}/import`, { dbml: '' });
-  check('import devolve bloco Colors {}', /Colors\s*\{/.test(imp.dbml));
-  check('cor de tabela importada', imp.dbml.includes('silver.dim_cliente: #b08d57'));
-  check('cor de grupo importada', imp.dbml.includes('@dimensoes: #112233'));
-  check('cor de coluna importada', imp.dbml.includes('silver.fato_venda.venda_key: #ff0000'));
-  check('cor de camada importada', imp.dbml.includes('LayerGroup prata [color: #c0c0c0]'));
-  check('linhagem L1 importada', /Lineage\s*\{[^}]*silver\.fato_venda < silver\.dim_cliente/.test(imp.dbml));
-  check('linhagem L2 importada', /LineageFields\s*\{/.test(imp.dbml));
-  check('nota de coluna importada', imp.dbml.includes("note: 'nome completo'"));
+  const assertRoundtrip = (fmt, dbml) => {
+    check(`[${fmt}] cor de tabela`, dbml.includes('silver.dim_cliente: #b08d57'));
+    check(`[${fmt}] cor de grupo`, dbml.includes('@dimensoes: #112233'));
+    check(`[${fmt}] cor de coluna`, dbml.includes('silver.fato_venda.venda_key: #ff0000'));
+    check(`[${fmt}] cor de camada`, dbml.includes('LayerGroup prata [color: #c0c0c0]'));
+    check(`[${fmt}] linhagem L1`, /Lineage\s*\{[^}]*silver\.fato_venda < silver\.dim_cliente/.test(dbml));
+    check(`[${fmt}] linhagem L2`, /LineageFields\s*\{/.test(dbml));
+    check(`[${fmt}] nota de coluna`, dbml.includes("note: 'nome completo'"));
+  };
+  const importOnly = async (files) => {
+    for (const f of await fs.readdir(inputDir, { recursive: true })) {
+      const p = path.join(inputDir, String(f));
+      if ((await fs.stat(p)).isFile()) await fs.rm(p);
+    }
+    for (const [rel, content] of files) {
+      const p = path.join(inputDir, rel);
+      await fs.mkdir(path.dirname(p), { recursive: true });
+      await fs.writeFile(p, content);
+    }
+    return api('POST', `/api/projects/${meta.id}/import`, { dbml: '' });
+  };
+
+  // 2a) SQL Oracle exportado no passo 1
+  assertRoundtrip('oracle', (await importOnly([['model_oracle.sql', sql]])).dbml);
+
+  // 2b) DBML nativo (o próprio project.dbml enviado a outra pessoa)
+  assertRoundtrip('dbml', (await importOnly([['model.dbml', FIXTURE_DBML]])).dbml);
+
+  // 2c) Pacote dbt com meta.localdrawdb
+  const dbtExp = await api('POST', '/api/export/dbt', { dbml: FIXTURE_DBML });
+  const dbtFiles = [];
+  for (const rel of dbtExp.files ?? []) {
+    const inner = rel.slice(rel.indexOf('dbt/') + 4); // caminho dentro do pacote dbt
+    dbtFiles.push([inner, await fs.readFile(path.resolve(rel), 'utf8')]);
+  }
+  if (!dbtFiles.length) throw new Error(`export dbt não retornou arquivos: ${JSON.stringify(dbtExp)}`);
+  assertRoundtrip('dbt', (await importOnly(dbtFiles)).dbml);
 } finally {
   await api('DELETE', `/api/projects/${meta.id}`);
   console.log('projeto temporário removido');
