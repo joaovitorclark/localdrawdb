@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useInteraction } from '../store/interaction';
-import { getColumnSettings, setColumnSetting, type ColSettings } from '../dsl/edit';
-import type { TableView } from '../dsl/parse';
+import { getColumnSettings, setColumnColor, setColumnSetting, type ColSettings } from '../dsl/edit';
+import type { ParsedFieldLineage, TableView } from '../dsl/parse';
+import { ColumnMappings } from './ColumnMappings';
 
 type Props = {
   dbml: string;
@@ -9,9 +10,23 @@ type Props = {
   onApply: (next: string) => void;
   onRenameColumn?: (table: string, oldName: string, newName: string) => void;
   onGoToColumn?: (table: string, column: string) => void;
+  mappings: ParsedFieldLineage[];
+  onAddMapping: (sourceTable: string, sourceColumn: string, targetColumn: string, note?: string, ref?: string) => void;
+  onUpdateMapping: (
+    prev: { sourceTable: string; sourceColumn: string; targetTable: string; targetColumn: string },
+    next: { sourceTable: string; sourceColumn: string; targetColumn: string; note?: string; ref?: string },
+  ) => void;
+  onRemoveMapping: (sourceTable: string, sourceColumn: string, targetColumn: string) => void;
 };
 
 const COLLAPSE_KEY = 'localdrawdb.columnPanelCollapsed';
+
+/** Cores pré-definidas pra pintar o nome do campo (semáforo) + custom. */
+const FIELD_COLORS = [
+  { label: 'Vermelho', value: '#dc2626' },
+  { label: 'Amarelo', value: '#d4af37' },
+  { label: 'Verde', value: '#15803d' },
+];
 
 function loadCollapsed(): boolean {
   try {
@@ -21,7 +36,17 @@ function loadCollapsed(): boolean {
   }
 }
 
-export function ColumnPanel({ dbml, tables, onApply, onRenameColumn, onGoToColumn }: Props) {
+export function ColumnPanel({
+  dbml,
+  tables,
+  onApply,
+  onRenameColumn,
+  onGoToColumn,
+  mappings,
+  onAddMapping,
+  onUpdateMapping,
+  onRemoveMapping,
+}: Props) {
   const sel = useInteraction((s) => s.selectedColumn);
   const selectColumn = useInteraction((s) => s.selectColumn);
   const [nameDraft, setNameDraft] = useState('');
@@ -134,6 +159,36 @@ export function ColumnPanel({ dbml, tables, onApply, onRenameColumn, onGoToColum
               Editar no DBML
             </button>
           )}
+          <div className="column-panel__field">
+            Cor do nome
+            <div className="column-panel__colors">
+              {FIELD_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  className={`col-color-dot${selCol?.color === c.value ? ' is-active' : ''}`}
+                  style={{ background: c.value }}
+                  title={c.label}
+                  onClick={() => onApply(setColumnColor(dbml, sel.table, sel.column, c.value))}
+                />
+              ))}
+              <input
+                type="color"
+                className="col-color-custom"
+                value={selCol?.color ?? '#888888'}
+                title="Cor personalizada"
+                onChange={(e) => onApply(setColumnColor(dbml, sel.table, sel.column, e.target.value))}
+              />
+              <button
+                type="button"
+                className="col-color-clear"
+                title="Sem cor"
+                onClick={() => onApply(setColumnColor(dbml, sel.table, sel.column, null))}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
           <label className="column-panel__row">
             <input type="checkbox" checked={!!settings.pk} onChange={(e) => apply({ pk: e.target.checked })} />
             Primary key
@@ -188,6 +243,15 @@ export function ColumnPanel({ dbml, tables, onApply, onRenameColumn, onGoToColum
               </ul>
             </div>
           )}
+          <ColumnMappings
+            tables={tables}
+            mappings={mappings}
+            targetTable={sel.table}
+            targetColumn={sel.column}
+            onAdd={onAddMapping}
+            onUpdate={onUpdateMapping}
+            onRemove={onRemoveMapping}
+          />
         </>
       )}
     </div>

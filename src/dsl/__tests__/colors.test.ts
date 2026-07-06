@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { splitDbmlBlocks } from '../blocks';
 import { parseColorsBlock, cleanDbml } from '../dbmlClean';
 import { parseDbml } from '../parse';
-import { setTableColor, setGroupColor } from '../edit';
+import { setTableColor, setGroupColor, setColumnColor } from '../edit';
 
 describe('bloco Colors', () => {
   it('tokeniza como colors', () => {
@@ -53,5 +53,19 @@ describe('cor de grupo (TableGroup)', () => {
     const c = parseDbml(src).colors;
     expect(c['t']).toBe('#111111');
     expect(c['@fatos_largos']).toBe('#b08d57');
+  });
+});
+
+describe('cor de coluna (campo)', () => {
+  it('setColumnColor grava tabela.coluna no bloco Colors', () => {
+    const out = setColumnColor('Table gold.dim_product {\n  category string\n}\n', 'gold.dim_product', 'category', '#dc2626');
+    expect(out).toContain('gold.dim_product.category: #dc2626');
+  });
+  it('parseDbml expõe a cor da coluna em column.color sem colidir com a tabela', () => {
+    const src = 'Table gold.dim_product {\n  category string\n}\nColors {\n  gold.dim_product: #eeeeee\n  gold.dim_product.category: #dc2626\n}';
+    const parsed = parseDbml(src);
+    expect(parsed.colors['gold.dim_product']).toBe('#eeeeee');
+    const col = parsed.tables[0].columns.find((c) => c.name === 'category');
+    expect(col?.color).toBe('#dc2626');
   });
 });

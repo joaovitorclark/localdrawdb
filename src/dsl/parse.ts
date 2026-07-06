@@ -36,6 +36,8 @@ export type ColumnView = {
   note?: string;
   /** Teste dbt accepted_values (do bloco Dbt { }). */
   acceptedValues?: string[];
+  /** Cor do nome do campo (do bloco Colors {}, chave `tabela.coluna`). */
+  color?: string;
 };
 export type TableView = {
   id: string; // schema.tabela (ou tabela)
@@ -156,12 +158,14 @@ export function parseDbml(dbml: string): ParseResult {
   for (const schema of db.schemas) {
     const schemaName = schema.name && schema.name !== 'public' ? schema.name : undefined;
     for (const t of schema.tables) {
+      const tableId = qualified(schemaName, t.name);
       const columns: ColumnView[] = t.fields.map((f: any) => ({
         name: f.name,
         type: f.type.type_name,
         pk: !!f.pk,
         notNull: !!f.not_null,
         note: f.note || undefined,
+        color: colorsMap[`${tableId}.${f.name}`],
       }));
       const compositePks: string[][] = [];
       for (const idx of (t as any).indexes ?? []) {
@@ -177,7 +181,7 @@ export function parseDbml(dbml: string): ParseResult {
         }
       }
       tables.push({
-        id: qualified(schemaName, t.name),
+        id: tableId,
         name: t.name,
         schema: schemaName,
         group: t.group?.name || undefined,

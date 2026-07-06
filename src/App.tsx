@@ -14,7 +14,6 @@ import {
 } from './dsl/edit';
 import { RecordsPanel } from './records/RecordsPanel';
 import { ColumnPanel } from './canvas/ColumnPanel';
-import { FieldLineagePanel } from './canvas/FieldLineagePanel';
 import { CanvasActionsCtx, type CanvasActions, type TableMeta } from './canvas/actions';
 import { LayersPanel } from './canvas/LayersPanel';
 import { PagesPanel } from './canvas/PagesPanel';
@@ -1411,6 +1410,13 @@ export default function App() {
                   selectColumn({ table, column: newName });
                 }}
                 onGoToColumn={goToColumn}
+                mappings={activeModel.lineageFields ?? []}
+                onAddMapping={handleAddFieldLineage}
+                onUpdateMapping={handleUpdateFieldLineage}
+                onRemoveMapping={(st, sc, tc) => {
+                  const tt = useInteraction.getState().selectedTable;
+                  if (tt) handleRemoveFieldLineage(st, sc, tt, tc);
+                }}
               />
             </CanvasLeftDock>
             <PageImportWizard
@@ -1440,16 +1446,6 @@ export default function App() {
               onAutolayout={handleAutolayout}
             />
             <ProblemsPanel issues={modelIssues} onFocusTable={focusTableWithPan} onGoToLine={goToLine} />
-            <FieldLineagePanel
-              tables={activeModel.tables}
-              mappings={activeModel.lineageFields ?? []}
-              onAdd={handleAddFieldLineage}
-              onUpdate={handleUpdateFieldLineage}
-              onRemove={(st, sc, tc) => {
-                const tt = useInteraction.getState().selectedTable;
-                if (tt) handleRemoveFieldLineage(st, sc, tt, tc);
-              }}
-            />
           </CanvasActionsCtx.Provider>
           <RecordsPanel
             records={activeModel.records}

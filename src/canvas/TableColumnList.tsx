@@ -75,6 +75,7 @@ function ColumnRowContent({
       ) : (
         <span
           className="col-name"
+          style={c.color ? { color: c.color } : undefined}
           onDoubleClick={(e) => {
             e.stopPropagation();
             onStartEdit(c.name);

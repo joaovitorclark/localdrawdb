@@ -126,6 +126,8 @@ export const useInteraction = create<InteractionState>((set) => ({
     set((s) => ({
       selectedTable: m.targetTable,
       selectedTableIds: [m.targetTable],
+      // Abre o ColumnPanel no campo destino (mapeamento unificado no menu do campo).
+      selectedColumn: { table: m.targetTable, column: m.targetColumn },
       selectedGroup: null,
       focusedFieldMapping: m,
       fieldLineageVisible: true,
