@@ -46,4 +46,26 @@ Ref: silver.b.x > bronze.a.old_col
     expect(out[0].affectsRefs).toBe(true);
     expect(out[0].refCount).toBeGreaterThanOrEqual(1);
   });
+
+  // Bug 3 (v18): renomear 2 tabelas de uma vez precisa abrir o modal (affectsRefs) —
+  // antes retornava [] e as refs não eram propagadas.
+  it('detecta múltiplos renames de tabela com impacto em refs', () => {
+    const prev = `Table gold.dim_customer {
+  customer_id integer [pk]
+  name string
+}
+Table gold.fct_sales {
+  sale_id integer [pk]
+  amount decimal
+}
+Ref: gold.fct_sales.sale_id > gold.dim_customer.customer_id
+`;
+    const next = prev
+      .replace('gold.dim_customer {', 'gold.dim_client {')
+      .replace('Table gold.fct_sales', 'Table gold.fct_orders');
+    const out = analyzeRenames(prev, next);
+    const tableRenames = out.filter((i) => i.rename.kind === 'table');
+    expect(tableRenames).toHaveLength(2);
+    expect(out.some((i) => i.affectsRefs)).toBe(true);
+  });
 });

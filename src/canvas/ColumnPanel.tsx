@@ -3,6 +3,8 @@ import { useInteraction } from '../store/interaction';
 import { getColumnSettings, setColumnColor, setColumnSetting, type ColSettings } from '../dsl/edit';
 import type { ParsedFieldLineage, TableView } from '../dsl/parse';
 import { ColumnMappings } from './ColumnMappings';
+import { Chevron, Close } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 type Props = {
   dbml: string;
@@ -119,19 +121,23 @@ export function ColumnPanel({
   return (
     <div className={`column-panel ${collapsed ? 'is-collapsed' : ''}`}>
       <div className="column-panel__head">
-        <button
-          type="button"
-          className="column-panel__collapse"
-          onClick={toggleCollapsed}
-          title={collapsed ? 'Expandir editor' : 'Recolher editor'}
-        >
-          {collapsed ? '▸' : '▾'}
-        </button>
+        <Tooltip label={collapsed ? 'Expandir editor' : 'Recolher editor'}>
+          <button
+            type="button"
+            className="column-panel__collapse"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? 'Expandir editor' : 'Recolher editor'}
+          >
+            <Chevron dir={collapsed ? 'right' : 'down'} className="icon-inline" size={14} />
+          </button>
+        </Tooltip>
         <strong className="column-panel__col">{sel.column}</strong>
         <span className="column-panel__tbl">{sel.table}</span>
-        <button className="column-panel__close" onClick={() => selectColumn(null)}>
-          ✕
-        </button>
+        <Tooltip label="Fechar editor de coluna">
+          <button className="column-panel__close" aria-label="Fechar editor de coluna" onClick={() => selectColumn(null)}>
+            <Close className="icon-inline" size={14} />
+          </button>
+        </Tooltip>
       </div>
       {!collapsed && (
         <>
@@ -179,14 +185,16 @@ export function ColumnPanel({
                 title="Cor personalizada"
                 onChange={(e) => onApply(setColumnColor(dbml, sel.table, sel.column, e.target.value))}
               />
-              <button
-                type="button"
-                className="col-color-clear"
-                title="Sem cor"
-                onClick={() => onApply(setColumnColor(dbml, sel.table, sel.column, null))}
-              >
-                ✕
-              </button>
+              <Tooltip label="Sem cor">
+                <button
+                  type="button"
+                  className="col-color-clear"
+                  aria-label="Sem cor"
+                  onClick={() => onApply(setColumnColor(dbml, sel.table, sel.column, null))}
+                >
+                  <Close className="icon-inline" size={14} />
+                </button>
+              </Tooltip>
             </div>
           </div>
           <label className="column-panel__row">

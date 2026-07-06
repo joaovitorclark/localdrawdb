@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldPanToTable, shouldSyncEditorTable } from '../syncEditorCanvas';
+import { shouldPanToTable, shouldSyncCursorLine, shouldSyncEditorTable } from '../syncEditorCanvas';
 
 describe('shouldSyncEditorTable', () => {
   it('não sincroniza na mesma tabela', () => {
@@ -30,5 +30,13 @@ describe('shouldPanToTable', () => {
 
   it('faz pan na primeira tabela focada', () => {
     expect(shouldPanToTable(null, 'raw.orders')).toBe(true);
+  });
+});
+
+describe('shouldSyncCursorLine', () => {
+  it('não sincroniza antes de interação (linha sentinela -1)', () => {
+    expect(shouldSyncCursorLine(-1)).toBe(false);
+    expect(shouldSyncCursorLine(0)).toBe(true);
+    expect(shouldSyncCursorLine(12)).toBe(true);
   });
 });

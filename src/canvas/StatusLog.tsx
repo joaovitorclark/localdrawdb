@@ -1,12 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Check, Dot, Warning } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 export type StatusLogEntry = { ts: number; msg: string };
 
+export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+
+export type StatusIcon = 'warning' | 'dot' | 'check' | null;
+
 type Props = {
   status: string;
+  saveState: SaveState;
   logs: StatusLogEntry[];
 };
+
+export function statusLabel(
+  saveState: SaveState,
+  status: string,
+): { text: string; cls: string; icon: StatusIcon } {
+  const cls = `savestate--${saveState}`;
+  if (saveState === 'saving') return { text: 'Salvando…', cls, icon: null };
+  if (saveState === 'error') return { text: 'Falha ao salvar', cls, icon: 'warning' };
+  if (saveState === 'dirty') return { text: 'Não salvo', cls, icon: 'dot' };
+  if (status !== 'Pronto') return { text: status, cls, icon: null };
+  return { text: 'Salvo', cls, icon: 'check' };
+}
 
 const fmtTime = (ts: number) => {
   const d = new Date(ts);
@@ -14,12 +33,20 @@ const fmtTime = (ts: number) => {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
 
+function StatusIconView({ icon }: { icon: StatusIcon }) {
+  if (icon === 'warning') return <Warning className="icon-inline status-log__icon" size={14} />;
+  if (icon === 'dot') return <Dot filled className="icon-inline status-log__icon" size={10} />;
+  if (icon === 'check') return <Check className="icon-inline status-log__icon" size={14} />;
+  return null;
+}
+
 // v15-04: área de status vira botão → dropdown com os últimos 100 logs (mais recente no topo).
 // Sem persistência (memória de sessão). Fecha ao clicar fora (padrão das paletas).
-export function StatusLog({ status, logs }: Props) {
+export function StatusLog({ status, saveState, logs }: Props) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const { text, cls, icon } = statusLabel(saveState, status);
 
   useEffect(() => {
     if (!open) return;
@@ -40,15 +67,17 @@ export function StatusLog({ status, logs }: Props) {
 
   return (
     <>
-      <button
-        ref={btnRef}
-        type="button"
-        className={`status status-log__btn${open ? ' is-open' : ''}`}
-        title="Histórico de status (últimos 100)"
-        onClick={toggle}
-      >
-        {status}
-      </button>
+      <Tooltip label="Histórico de status (últimos 100)">
+        <button
+          ref={btnRef}
+          type="button"
+          className={`status status-log__btn ${cls}${open ? ' is-open' : ''}`}
+          onClick={toggle}
+        >
+          <StatusIconView icon={icon} />
+          {text}
+        </button>
+      </Tooltip>
       {open &&
         rect &&
         createPortal(

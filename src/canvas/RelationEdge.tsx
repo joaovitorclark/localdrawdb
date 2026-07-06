@@ -1,6 +1,8 @@
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from 'reactflow';
 import type { Cardinality } from '../dsl/parse';
 import { useColumnEdgeCoords } from './useColumnEdgeCoords';
+import { Close } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 export type RelationEdgeData = {
   fromRel: Cardinality;
@@ -88,17 +90,19 @@ export function RelationEdge({
       )}
       {selected && data?.onRemove && !data.externalSummary && (
         <EdgeLabelRenderer>
-          <button
-            className="edge-delete"
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-            title="Remover relação"
-            onClick={(e) => {
-              e.stopPropagation();
-              data.onRemove?.();
-            }}
-          >
-            ✕
-          </button>
+          <Tooltip label="Remover relação">
+            <button
+              className="edge-delete"
+              aria-label="Remover relação"
+              style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onRemove?.();
+              }}
+            >
+              <Close className="icon-inline" size={14} />
+            </button>
+          </Tooltip>
         </EdgeLabelRenderer>
       )}
     </>

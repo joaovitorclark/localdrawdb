@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { CanvasPage } from '../api';
 import { ALL_PAGE_ID } from './scaleLimits';
+import { Chevron } from '../icons';
+import { Tooltip } from '../Tooltip';
+import { useCollapsePersist } from '../hooks/useCollapsePersist';
 
 type Props = {
   pages: CanvasPage[];
@@ -8,16 +11,16 @@ type Props = {
   totalTables: number;
   visibleTables: number;
   onChangeActivePages: (ids: string[]) => void;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 };
 
-const COLLAPSE_KEY = 'localdrawdb.pagesPanelCollapsed';
-
-function loadCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSE_KEY) === '1';
-  } catch {
-    return false;
-  }
+// Núcleo puro mantido para os testes de estado (parsePagesCollapsed); o painel usa
+// useCollapsePersist como mecanismo de colapso/persistência unificado (v18-05).
+export function parsePagesCollapsed(raw: string | null): boolean {
+  if (raw === '1') return true;
+  if (raw === '0') return false;
+  return true;
 }
 
 export function PagesPanel({
@@ -26,25 +29,21 @@ export function PagesPanel({
   totalTables,
   visibleTables,
   onChangeActivePages,
+  collapsed: collapsedProp,
+  onCollapsedChange,
 }: Props) {
-  const [collapsed, setCollapsed] = useState(loadCollapsed);
+  // Persistência via hook unificado (v18-05); prop `collapsed` permite controle externo (v18-07).
+  const [persistedCollapsed, togglePersisted] = useCollapsePersist('ldb.panel.pages', true);
+  const collapsed = collapsedProp ?? persistedCollapsed;
+  const toggleCollapsed = () => {
+    onCollapsedChange?.(!collapsed);
+    togglePersisted();
+  };
   const selectablePages = useMemo(() => pages.filter((p) => p.id !== ALL_PAGE_ID), [pages]);
   const showAll = activePageIds.includes(ALL_PAGE_ID);
   const selected = useMemo(() => new Set(activePageIds), [activePageIds]);
 
   if (selectablePages.length === 0) return null;
-
-  const toggleCollapsed = () => {
-    setCollapsed((c) => {
-      const next = !c;
-      try {
-        localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  };
 
   const toggleAll = (checked: boolean) => {
     if (checked) onChangeActivePages([ALL_PAGE_ID]);
@@ -63,14 +62,16 @@ export function PagesPanel({
 
   return (
     <div className={`pages-panel ${collapsed ? 'is-collapsed' : ''}`}>
-      <button
-        type="button"
-        className="pages-panel__collapse"
-        onClick={toggleCollapsed}
-        title={collapsed ? 'Expandir páginas' : 'Recolher páginas'}
-      >
-        {collapsed ? '▸ Páginas' : '▾ Páginas no canvas'}
-      </button>
+      <Tooltip label={collapsed ? 'Expandir páginas' : 'Recolher páginas'}>
+        <button
+          type="button"
+          className="pages-panel__collapse"
+          onClick={toggleCollapsed}
+        >
+          <Chevron dir={collapsed ? 'right' : 'down'} className="icon-inline" size={14} />
+          {collapsed ? ' Páginas' : ' Páginas no canvas'}
+        </button>
+      </Tooltip>
       {!collapsed && (
         <>
           <p className="pages-panel__hint">

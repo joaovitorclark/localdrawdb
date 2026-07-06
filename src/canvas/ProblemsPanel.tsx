@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ModelIssue } from '../dsl/validateModel';
+import { Warning } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 type Props = {
   issues: ModelIssue[];
   onFocusTable?: (tableId: string) => void;
   onGoToLine?: (line: number) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 // v15-03: badge compacto no topo (perto de Salvar/status). Sem problemas → oculto.
 // Clique abre a lista num popover via portal (não coberto pelos nós do canvas).
-export function ProblemsPanel({ issues, onFocusTable, onGoToLine }: Props) {
-  const [open, setOpen] = useState(false);
+export function ProblemsPanel({ issues, onFocusTable, onGoToLine, open, onOpenChange }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
   const [rect, setRect] = useState<DOMRect | null>(null);
   const badgeRef = useRef<HTMLButtonElement>(null);
 
@@ -20,16 +25,17 @@ export function ProblemsPanel({ issues, onFocusTable, onGoToLine }: Props) {
 
   // Fecha ao clicar fora (badge e popover) — padrão das paletas.
   useEffect(() => {
-    if (!open) return;
+    if (!isOpen) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (badgeRef.current?.contains(t)) return;
       if ((t as HTMLElement).closest?.('.problems-pop')) return;
-      setOpen(false);
+      setInternalOpen(false);
+      onOpenChange?.(false);
     };
     document.addEventListener('mousedown', onDown, true);
     return () => document.removeEventListener('mousedown', onDown, true);
-  }, [open]);
+  }, [isOpen, onOpenChange]);
 
   // Some se não há problemas.
   if (!issues.length) return null;
@@ -41,22 +47,25 @@ export function ProblemsPanel({ issues, onFocusTable, onGoToLine }: Props) {
 
   const toggle = () => {
     if (badgeRef.current) setRect(badgeRef.current.getBoundingClientRect());
-    setOpen((o) => !o);
+    const next = !isOpen;
+    setInternalOpen(next);
+    onOpenChange?.(next);
   };
 
   return (
     <>
-      <button
-        ref={badgeRef}
-        type="button"
-        className={`problems-badge problems-badge--${severity}${open ? ' is-open' : ''}`}
-        title="Problemas do modelo"
-        onClick={toggle}
-      >
-        <span className="problems-badge__icon" aria-hidden>⚠</span>
-        <span className="problems-badge__label">{label}</span>
-      </button>
-      {open &&
+      <Tooltip label="Problemas do modelo">
+        <button
+          ref={badgeRef}
+          type="button"
+          className={`problems-badge problems-badge--${severity}${isOpen ? ' is-open' : ''}`}
+          onClick={toggle}
+        >
+          <Warning className="icon-inline problems-badge__icon" size={14} />
+          <span className="problems-badge__label">{label}</span>
+        </button>
+      </Tooltip>
+      {isOpen &&
         rect &&
         createPortal(
           <div
@@ -72,24 +81,26 @@ export function ProblemsPanel({ issues, onFocusTable, onGoToLine }: Props) {
                 <li key={i} className={`problems-pop__item problems-pop__item--${issue.severity}`}>
                   <div className="problems-pop__row">
                     {issue.line != null && onGoToLine && (
-                      <button
-                        type="button"
-                        className="problems-pop__goto"
-                        onClick={() => { onGoToLine(issue.line!); setOpen(false); }}
-                        title="Ir à linha no editor"
-                      >
-                        Linha
-                      </button>
+                      <Tooltip label="Ir à linha no editor">
+                        <button
+                          type="button"
+                          className="problems-pop__goto"
+                          onClick={() => { onGoToLine(issue.line!); setInternalOpen(false); onOpenChange?.(false); }}
+                        >
+                          Linha
+                        </button>
+                      </Tooltip>
                     )}
                     {issue.tableId && onFocusTable && (
-                      <button
-                        type="button"
-                        className="problems-pop__goto"
-                        onClick={() => { onFocusTable(issue.tableId!); setOpen(false); }}
-                        title="Ir para tabela no canvas"
-                      >
-                        Tabela
-                      </button>
+                      <Tooltip label="Ir para tabela no canvas">
+                        <button
+                          type="button"
+                          className="problems-pop__goto"
+                          onClick={() => { onFocusTable(issue.tableId!); setInternalOpen(false); onOpenChange?.(false); }}
+                        >
+                          Tabela
+                        </button>
+                      </Tooltip>
                     )}
                     <span className="problems-pop__msg">{issue.message}</span>
                   </div>

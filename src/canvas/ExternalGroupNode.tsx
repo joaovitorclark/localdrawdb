@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import { EXTERNAL_SOURCE_HANDLE, EXTERNAL_TARGET_HANDLE } from './pageFilter';
+import { Chevron } from '../icons';
 
 type ExternalGroupData = {
   label: string;
@@ -24,9 +25,7 @@ function ExternalGroupNodeImpl({ data }: { data: ExternalGroupData }) {
         className="external-group-node__handle"
       />
       <div className="external-group-node__header">
-        <span className="external-group-node__toggle" aria-hidden>
-          ▸
-        </span>
+        <Chevron dir="right" className="icon-inline external-group-node__toggle" size={14} />
         <span className="external-group-node__label">{data.label}</span>
       </div>
       <div className="external-group-node__meta">

@@ -76,20 +76,28 @@ export function detectRenames(prevDbml: string, nextDbml: string): DetectedRenam
   const prev = index(prevTables);
   const next = index(nextTables);
 
-  // --- Renome de tabela: exatamente 1 id completo some + 1 aparece, com colunas semelhantes. ---
+  // --- Renome de tabela: cada id completo que some é pareado com um que aparece, por
+  // semelhança de colunas (>= 0.8). Suporta VÁRIOS renames de uma vez, mas só aceita
+  // pares com correspondência ÚNICA em ambos os lados (mútua) — assim, empates/ambiguidade
+  // (ex.: colar tabela) não viram rename. ---
   const removedIds = [...prev.byId.keys()].filter((id) => !next.byId.has(id) && isCompleteTableId(id));
   const addedIds = [...next.byId.keys()].filter((id) => !prev.byId.has(id) && isCompleteTableId(id));
-  if (removedIds.length === 1 && addedIds.length === 1) {
-    const oldId = removedIds[0];
-    const newId = addedIds[0];
-    // Não renomeia se algum lado for ambíguo (nome duplicado) ou criaria colisão de nome.
-    if (!prev.dup.has(oldId) && !next.dup.has(newId) && !prev.byId.has(newId)) {
-      const prevNames = tableFields(prev.byId.get(oldId)!.text).map((f) => f.name);
-      const nextNames = tableFields(next.byId.get(newId)!.text).map((f) => f.name);
-      if (columnOverlap(prevNames, nextNames) >= 0.8) {
-        renames.push({ kind: 'table', oldId, newId });
-      }
-    }
+  const tableScore = (oldId: string, newId: string): number => {
+    const prevNames = tableFields(prev.byId.get(oldId)!.text).map((f) => f.name);
+    const nextNames = tableFields(next.byId.get(newId)!.text).map((f) => f.name);
+    return columnOverlap(prevNames, nextNames);
+  };
+  const OVERLAP_MIN = 0.8;
+  for (const oldId of removedIds) {
+    if (prev.dup.has(oldId)) continue; // origem ambígua
+    const matches = addedIds.filter((newId) => tableScore(oldId, newId) >= OVERLAP_MIN);
+    if (matches.length !== 1) continue; // 0 ou ambíguo
+    const newId = matches[0];
+    if (next.dup.has(newId) || prev.byId.has(newId)) continue; // destino ambíguo/colisão
+    // correspondência tem que ser única também do lado do destino (monogamia mútua)
+    const back = removedIds.filter((rid) => !prev.dup.has(rid) && tableScore(rid, newId) >= OVERLAP_MIN);
+    if (back.length !== 1) continue;
+    renames.push({ kind: 'table', oldId, newId });
   }
 
   // --- Renome de coluna: só em tabelas presentes (por id) nos DOIS snapshots, não ambíguas. ---
@@ -105,14 +113,27 @@ export function detectRenames(prevDbml: string, nextDbml: string): DetectedRenam
     const nextSet = new Set(nextNames);
     const removedCols = prevNames.filter((n) => !nextSet.has(n));
     const addedCols = nextNames.filter((n) => !prevSet.has(n));
-    // Renome só quando exatamente 1 coluna sai e 1 entra (resto estável) e a assinatura bate.
-    if (removedCols.length === 1 && addedCols.length === 1) {
-      const oldCol = removedCols[0];
-      const newCol = addedCols[0];
-      const pf = prevFields.find((f) => f.name === oldCol);
-      const nf = nextFields.find((f) => f.name === newCol);
-      if (pf && nf && pf.sig === nf.sig) {
-        renames.push({ kind: 'column', table: id, oldCol, newCol });
+    // Pareia colunas removidas↔adicionadas pela ASSINATURA (tipo + atributos). Suporta vários
+    // renames por tabela, mas só aceita quando a assinatura identifica UM par de forma única:
+    // se duas colunas compartilham a mesma assinatura (ex.: duas `string`), é ambíguo e ignora.
+    const sigOf = (fields: { name: string; sig: string }[], name: string) =>
+      fields.find((f) => f.name === name)?.sig;
+    const removedBySig = new Map<string, string[]>();
+    const addedBySig = new Map<string, string[]>();
+    for (const c of removedCols) {
+      const sig = sigOf(prevFields, c);
+      if (sig == null) continue;
+      (removedBySig.get(sig) ?? removedBySig.set(sig, []).get(sig)!).push(c);
+    }
+    for (const c of addedCols) {
+      const sig = sigOf(nextFields, c);
+      if (sig == null) continue;
+      (addedBySig.get(sig) ?? addedBySig.set(sig, []).get(sig)!).push(c);
+    }
+    for (const [sig, removedForSig] of removedBySig) {
+      const addedForSig = addedBySig.get(sig);
+      if (removedForSig.length === 1 && addedForSig?.length === 1) {
+        renames.push({ kind: 'column', table: id, oldCol: removedForSig[0], newCol: addedForSig[0] });
       }
     }
   }

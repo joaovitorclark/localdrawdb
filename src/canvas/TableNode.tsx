@@ -7,6 +7,8 @@ import { externalSourceHandle, externalTargetHandle } from './pageFilter';
 import { LineagePorts } from './LineagePorts';
 import { TableInfoPopover } from './TableInfoPopover';
 import { TableColumnList } from './TableColumnList';
+import { Close, Dot, Info } from '../icons';
+import { Tooltip } from '../Tooltip';
 
 // Nó de tabela: colunas + FK por handle, ou cartão compacto + portas de linhagem (draw.io).
 // Memoizado: `data` (incl. cor/meta pré-computadas) só muda quando o conteúdo da própria
@@ -80,7 +82,7 @@ function TableNodeImpl({ data }: { data: TableNodeData }) {
               onMouseEnter={(e) => setInfoRect(e.currentTarget.getBoundingClientRect())}
               onMouseLeave={() => setInfoRect(null)}
             >
-              ⓘ
+              <Info className="icon-inline" size={14} />
               {infoRect &&
                 createPortal(
                   <TableInfoPopover
@@ -118,7 +120,7 @@ function TableNodeImpl({ data }: { data: TableNodeData }) {
                 setPalette((p) => !p);
               }}
             >
-              ●
+              <Dot filled className="icon-inline" size={12} />
             </button>
             {palette && (
               <div className="color-palette" onClick={(e) => e.stopPropagation()}>
@@ -126,7 +128,16 @@ function TableNodeImpl({ data }: { data: TableNodeData }) {
                   {TABLE_COLORS.map((c) => (
                     <button key={c} type="button" style={{ background: c }} onClick={() => { actions.onSetColor(data.id, c); setPalette(false); }} />
                   ))}
-                  <button type="button" className="color-reset" title="Sem cor (usar camada)" onClick={() => { actions.onSetColor(data.id, null); setPalette(false); }}>✕</button>
+                  <Tooltip label="Sem cor (usar camada)">
+                    <button
+                      type="button"
+                      className="color-reset"
+                      aria-label="Sem cor (usar camada)"
+                      onClick={() => { actions.onSetColor(data.id, null); setPalette(false); }}
+                    >
+                      <Close className="icon-inline" size={14} />
+                    </button>
+                  </Tooltip>
                 </div>
                 <div className="color-palette__layers">
                   {actions.layers.map((l) => (

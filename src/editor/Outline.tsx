@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { splitDbmlBlocks, type Block } from '../dsl/blocks';
+import { Chevron } from '../icons';
 
 type Props = {
   dbml: string;
@@ -33,7 +34,8 @@ export function Outline({ dbml, onGoToLine, onFocusTable }: Props) {
   return (
     <div className={`outline-panel ${collapsed ? 'is-collapsed' : ''}`}>
       <button className="outline-panel__toggle" onClick={() => setCollapsed((c) => !c)}>
-        {collapsed ? '▸' : '▾'} Outline
+        <Chevron dir={collapsed ? 'right' : 'down'} className="icon-inline" size={14} />
+        {' '}Outline
       </button>
       {!collapsed && (
         <>

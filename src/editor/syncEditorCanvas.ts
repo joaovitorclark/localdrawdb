@@ -1,5 +1,7 @@
 export type FocusTableOptions = { pan?: boolean };
 
+export const shouldSyncCursorLine = (line0: number): boolean => line0 >= 0;
+
 /** Decide se o canvas deve recentralizar na tabela (evita pan a cada keystroke). */
 export function shouldPanToTable(
   previousTableId: string | null,
