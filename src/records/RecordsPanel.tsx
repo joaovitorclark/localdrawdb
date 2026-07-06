@@ -12,6 +12,8 @@ type Props = {
   refs: RefView[];
   dbml: string;
   onApply: (next: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export const RECORDS_OPEN_KEY = 'localdrawdb.recordsPanelOpen';
@@ -79,9 +81,14 @@ function NoteField({
   );
 }
 
-export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
-  const [collapsed, toggleCollapsed] = useCollapsePersist('ldb.panel.records', true);
-  const open = !collapsed;
+export function RecordsPanel({ records, tables, refs, dbml, onApply, open: openProp, onOpenChange }: Props) {
+  // Persistência via hook unificado (v18-05); prop `open` permite controle externo (v18-07).
+  const [collapsed, togglePersisted] = useCollapsePersist('ldb.panel.records', true);
+  const open = openProp ?? !collapsed;
+  const toggleOpen = () => {
+    onOpenChange?.(!open);
+    togglePersisted();
+  };
   const selectedTable = useInteraction((s) => s.selectedTable);
   const selectedColumn = useInteraction((s) => s.selectedColumn);
   const selectedGroup = useInteraction((s) => s.selectedGroup);
@@ -161,7 +168,7 @@ export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
 
   return (
     <div className={`records-panel ${open ? 'is-open' : ''}`}>
-      <button className="records-panel__toggle" onClick={toggleCollapsed}>
+      <button className="records-panel__toggle" onClick={toggleOpen}>
         <Chevron dir={open ? 'down' : 'right'} className="icon-inline" size={14} />
         {' '}Dados (amostra) · {Math.max(panelCount, 1)} tabela(s)
       </button>

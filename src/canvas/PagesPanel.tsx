@@ -11,6 +11,8 @@ type Props = {
   totalTables: number;
   visibleTables: number;
   onChangeActivePages: (ids: string[]) => void;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 };
 
 // Núcleo puro mantido para os testes de estado (parsePagesCollapsed); o painel usa
@@ -27,8 +29,16 @@ export function PagesPanel({
   totalTables,
   visibleTables,
   onChangeActivePages,
+  collapsed: collapsedProp,
+  onCollapsedChange,
 }: Props) {
-  const [collapsed, toggleCollapsed] = useCollapsePersist('ldb.panel.pages', true);
+  // Persistência via hook unificado (v18-05); prop `collapsed` permite controle externo (v18-07).
+  const [persistedCollapsed, togglePersisted] = useCollapsePersist('ldb.panel.pages', true);
+  const collapsed = collapsedProp ?? persistedCollapsed;
+  const toggleCollapsed = () => {
+    onCollapsedChange?.(!collapsed);
+    togglePersisted();
+  };
   const selectablePages = useMemo(() => pages.filter((p) => p.id !== ALL_PAGE_ID), [pages]);
   const showAll = activePageIds.includes(ALL_PAGE_ID);
   const selected = useMemo(() => new Set(activePageIds), [activePageIds]);

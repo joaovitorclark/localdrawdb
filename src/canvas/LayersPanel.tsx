@@ -12,10 +12,27 @@ type Props = {
   onAddLayer: (n: string, c: string) => void;
   onFocusTable: (tableId: string) => void;
   onAutolayout?: () => void;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 };
 
-export function LayersPanel({ layers, tables, onAddLayer, onFocusTable, onAutolayout }: Props) {
-  const [collapsed, toggleCollapsed] = useCollapsePersist('ldb.panel.layers', false);
+export function LayersPanel({
+  layers,
+  tables,
+  onAddLayer,
+  onFocusTable,
+  onAutolayout,
+  collapsed: collapsedProp,
+  onCollapsedChange,
+}: Props) {
+  // Persistência via hook unificado (v18-05); prop `collapsed` permite controle externo
+  // pelo command palette (v18-07).
+  const [persistedCollapsed, togglePersisted] = useCollapsePersist('ldb.panel.layers', false);
+  const collapsed = collapsedProp ?? persistedCollapsed;
+  const toggleCollapsed = () => {
+    onCollapsedChange?.(!collapsed);
+    togglePersisted();
+  };
   const [tableQuery, setTableQuery] = useState('');
   const hiddenLayers = useInteraction((s) => s.hiddenLayers);
   const toggleLayer = useInteraction((s) => s.toggleLayer);
