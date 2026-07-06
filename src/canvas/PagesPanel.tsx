@@ -8,6 +8,8 @@ type Props = {
   totalTables: number;
   visibleTables: number;
   onChangeActivePages: (ids: string[]) => void;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 };
 
 const COLLAPSE_KEY = 'localdrawdb.pagesPanelCollapsed';
@@ -26,8 +28,11 @@ export function PagesPanel({
   totalTables,
   visibleTables,
   onChangeActivePages,
+  collapsed,
+  onCollapsedChange,
 }: Props) {
-  const [collapsed, setCollapsed] = useState(loadCollapsed);
+  const [internalCollapsed, setInternalCollapsed] = useState(loadCollapsed);
+  const isCollapsed = collapsed ?? internalCollapsed;
   const selectablePages = useMemo(() => pages.filter((p) => p.id !== ALL_PAGE_ID), [pages]);
   const showAll = activePageIds.includes(ALL_PAGE_ID);
   const selected = useMemo(() => new Set(activePageIds), [activePageIds]);
@@ -35,15 +40,14 @@ export function PagesPanel({
   if (selectablePages.length === 0) return null;
 
   const toggleCollapsed = () => {
-    setCollapsed((c) => {
-      const next = !c;
-      try {
-        localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+    const next = !isCollapsed;
+    setInternalCollapsed(next);
+    onCollapsedChange?.(next);
+    try {
+      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
   };
 
   const toggleAll = (checked: boolean) => {
@@ -62,16 +66,16 @@ export function PagesPanel({
   };
 
   return (
-    <div className={`pages-panel ${collapsed ? 'is-collapsed' : ''}`}>
+    <div className={`pages-panel ${isCollapsed ? 'is-collapsed' : ''}`}>
       <button
         type="button"
         className="pages-panel__collapse"
         onClick={toggleCollapsed}
-        title={collapsed ? 'Expandir páginas' : 'Recolher páginas'}
+        title={isCollapsed ? 'Expandir páginas' : 'Recolher páginas'}
       >
-        {collapsed ? '▸ Páginas' : '▾ Páginas no canvas'}
+        {isCollapsed ? '▸ Páginas' : '▾ Páginas no canvas'}
       </button>
-      {!collapsed && (
+      {!isCollapsed && (
         <>
           <p className="pages-panel__hint">
             {visibleTables === 0 && totalTables > 0

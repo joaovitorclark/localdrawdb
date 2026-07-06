@@ -42,6 +42,10 @@ import { ExportMenu } from './ExportMenu';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { pinnedCreatedMessage } from './projectMessages';
 import { exportInputL2Warning } from './exportWarnings';
+import { CommandPalette } from './palette/CommandPalette';
+import { buildCommands, type CommandAction } from './palette/registry';
+import { ShortcutsOverlay } from './help/ShortcutsOverlay';
+import { CANVAS_GESTURES, shortcutsFromCommands } from './help/gestures';
 import * as api from './api';
 import type { CanvasPage, LineageLink, ProjectMeta, TableSize } from './api';
 
@@ -73,6 +77,14 @@ function useStable<T>(value: T): T {
     ref.current = value;
   }
   return ref.current;
+}
+
+function loadStoredFlag(key: string, fallback: boolean): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return fallback;
+  }
 }
 
 const SAMPLE = `TableGroup vendas {
@@ -167,6 +179,12 @@ export default function App() {
   }, []);
   const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
   const [autoSave, setAutoSave] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(() => loadStoredFlag('localdrawdb.layersPanelCollapsed', false));
+  const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(() => loadStoredFlag('localdrawdb.pagesPanelCollapsed', false));
+  const [recordsPanelOpen, setRecordsPanelOpen] = useState(true);
+  const [problemsPanelOpen, setProblemsPanelOpen] = useState(false);
   const [focusTableId, setFocusTableId] = useState<string | null>(null);
   const [focusNonce, setFocusNonce] = useState(0);
   const [editorCollapsed, setEditorCollapsed] = useState(false);
@@ -220,6 +238,22 @@ export default function App() {
   const [future, setFuture] = useState<Snapshot[]>([]);
   const baselineRef = useRef<Snapshot | null>(null);
   const commitTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('localdrawdb.layersPanelCollapsed', layersPanelCollapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [layersPanelCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('localdrawdb.pagesPanelCollapsed', pagesPanelCollapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [pagesPanelCollapsed]);
 
   // Carrega a lista de projetos e o projeto ativo na montagem (F2).
   useEffect(() => {
@@ -623,11 +657,27 @@ export default function App() {
         } else {
           handleSave(reconciledDbml ?? undefined);
         }
+      } else if (k === 'k') {
+        e.preventDefault();
+        e.stopPropagation();
+        setPaletteOpen(true);
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [undo, redo, handleSave, handleEditorCommit]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '?') return;
+      const el = e.target as HTMLElement;
+      if (el.closest?.('.cm-editor, input, textarea, [contenteditable]')) return;
+      e.preventDefault();
+      setHelpOpen((open) => !open);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
 
   const goToLine = useCallback((line: number) => {
     setEditorCollapsed(false);
@@ -1259,6 +1309,139 @@ export default function App() {
     pushStatus('Organizado: tabelas → refs → records');
   };
 
+  const saveFromPalette = useCallback(() => {
+    const { openedModal, reconciledDbml } = handleEditorCommit();
+    if (openedModal) {
+      pushStatus('Confirme a renomeação antes de salvar');
+      return;
+    }
+    handleSave(reconciledDbml ?? undefined);
+  }, [handleEditorCommit, handleSave, pushStatus]);
+
+  const paletteActions = useMemo<CommandAction[]>(
+    () => [
+      {
+        id: 'action:save',
+        label: 'Salvar',
+        shortcut: 'Cmd/Ctrl+S',
+        keywords: ['salvar projeto', 'save'],
+        run: saveFromPalette,
+      },
+      {
+        id: 'action:organize-dbml',
+        label: 'Organizar DBML',
+        keywords: ['organize', 'refs', 'records'],
+        run: handleOrganize,
+      },
+      {
+        id: 'action:organize-canvas',
+        label: 'Organizar canvas',
+        keywords: ['autolayout', 'layout'],
+        run: handleAutolayout,
+      },
+      ...api.EXPORT_OPTIONS.map((opt) => ({
+        id: `action:export:${opt.id}`,
+        label: `Exportar ${opt.label}`,
+        keywords: ['exportar', opt.format, opt.dialect ?? ''],
+        run: () => handleExportOption(opt),
+      })),
+      {
+        id: 'action:export-png',
+        label: 'Export PNG',
+        keywords: ['exportar imagem', 'png'],
+        run: handlePng,
+      },
+      {
+        id: 'action:import',
+        label: 'Importar (input/)',
+        keywords: ['importar', 'input'],
+        run: handleImport,
+      },
+      {
+        id: 'action:undo',
+        label: 'Undo',
+        shortcut: 'Cmd/Ctrl+Z',
+        keywords: ['desfazer', 'undo'],
+        run: undo,
+      },
+      {
+        id: 'action:redo',
+        label: 'Redo',
+        shortcut: 'Cmd/Ctrl+Shift+Z',
+        keywords: ['refazer', 'redo'],
+        run: redo,
+      },
+      {
+        id: 'action:toggle-autosave',
+        label: autoSave ? 'Desligar Auto-save' : 'Ligar Auto-save',
+        keywords: ['autosave', 'auto save'],
+        run: () => setAutoSave((value) => !value),
+      },
+      {
+        id: 'action:toggle-lineage-mode',
+        label: 'Alternar modo linhagem',
+        keywords: ['linhagem', 'lineage mode'],
+        run: () => useInteraction.getState().toggleLineageMode(),
+      },
+      {
+        id: 'action:toggle-layers-panel',
+        label: layersPanelCollapsed ? 'Abrir painel Camadas' : 'Fechar painel Camadas',
+        keywords: ['camadas', 'layers panel'],
+        run: () => setLayersPanelCollapsed((value) => !value),
+      },
+      {
+        id: 'action:toggle-records-panel',
+        label: recordsPanelOpen ? 'Fechar painel Dados' : 'Abrir painel Dados',
+        keywords: ['dados', 'records panel'],
+        run: () => setRecordsPanelOpen((value) => !value),
+      },
+      {
+        id: 'action:toggle-pages-panel',
+        label: pagesPanelCollapsed ? 'Abrir painel Páginas' : 'Fechar painel Páginas',
+        keywords: ['paginas', 'páginas', 'pages panel'],
+        run: () => setPagesPanelCollapsed((value) => !value),
+      },
+      {
+        id: 'action:toggle-problems-panel',
+        label: problemsPanelOpen ? 'Fechar painel Problemas' : 'Abrir painel Problemas',
+        keywords: ['problemas', 'issues panel'],
+        run: () => setProblemsPanelOpen((value) => !value),
+      },
+    ],
+    [
+      autoSave,
+      handleAutolayout,
+      handleExportOption,
+      handleImport,
+      handleOrganize,
+      handlePng,
+      layersPanelCollapsed,
+      pagesPanelCollapsed,
+      problemsPanelOpen,
+      recordsPanelOpen,
+      redo,
+      saveFromPalette,
+      undo,
+    ],
+  );
+
+  const paletteCommands = useMemo(
+    () =>
+      buildCommands({
+        tables: activeModel.tables.map((table) => ({ id: table.id, name: table.name, schema: table.schema })),
+        actions: paletteActions,
+        onFocusTable: focusTableWithPan,
+      }),
+    [activeModel.tables, focusTableWithPan, paletteActions],
+  );
+
+  const isMac =
+    typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+  const helpShortcuts = useMemo(
+    () => shortcutsFromCommands(paletteCommands, isMac),
+    [paletteCommands, isMac],
+  );
+
   return (
     <div className="app">
       <header className="toolbar">
@@ -1293,6 +1476,14 @@ export default function App() {
         <button onClick={handleImport}>Importar (input/)</button>
         <ExportMenu options={api.EXPORT_OPTIONS} onExport={handleExportOption} />
         <button onClick={handlePng}>Export PNG</button>
+        <button
+          type="button"
+          className="toolbar__palette-btn"
+          title="Buscar comandos e tabelas (Cmd/Ctrl+K)"
+          onClick={() => setPaletteOpen(true)}
+        >
+          <span aria-hidden>⌕</span> Buscar
+        </button>
         <span className="sep" />
         <button
           className="btn-save"
@@ -1315,7 +1506,13 @@ export default function App() {
             <span className="toggle-switch__knob" />
           </button>
         </span>
-        <ProblemsPanel issues={modelIssues} onFocusTable={focusTableWithPan} onGoToLine={goToLine} />
+        <ProblemsPanel
+          issues={modelIssues}
+          onFocusTable={focusTableWithPan}
+          onGoToLine={goToLine}
+          open={problemsPanelOpen}
+          onOpenChange={setProblemsPanelOpen}
+        />
         <StatusLog status={status} logs={logs} />
         <span className={`savestate savestate--${saveState}`}>
           {saveState === 'saving'
@@ -1374,6 +1571,15 @@ export default function App() {
           />
         )}
         <section className="pane pane--canvas">
+          <button
+            type="button"
+            className="canvas-help-btn"
+            title="Atalhos e gestos (?)"
+            aria-label="Atalhos e gestos"
+            onClick={() => setHelpOpen(true)}
+          >
+            ?
+          </button>
           <CanvasActionsCtx.Provider value={actions}>
             <Canvas
               parsed={canvasActiveModel}
@@ -1409,6 +1615,8 @@ export default function App() {
                 totalTables={activeModel.tables.length}
                 visibleTables={canvasActiveModel.tables.length}
                 onChangeActivePages={handleChangeActivePages}
+                collapsed={pagesPanelCollapsed}
+                onCollapsedChange={setPagesPanelCollapsed}
               />
               <ColumnPanel
                 dbml={dbml}
@@ -1460,6 +1668,8 @@ export default function App() {
               onAddLayer={actions.onAddLayer}
               onFocusTable={focusTableWithPan}
               onAutolayout={handleAutolayout}
+              collapsed={layersPanelCollapsed}
+              onCollapsedChange={setLayersPanelCollapsed}
             />
           </CanvasActionsCtx.Provider>
           <RecordsPanel
@@ -1472,9 +1682,22 @@ export default function App() {
               setDbml(next);
               setSaveState('dirty');
             }}
+            open={recordsPanelOpen}
+            onOpenChange={setRecordsPanelOpen}
           />
         </section>
       </main>
+      <CommandPalette
+        open={paletteOpen}
+        commands={paletteCommands}
+        onClose={() => setPaletteOpen(false)}
+      />
+      <ShortcutsOverlay
+        open={helpOpen}
+        shortcuts={helpShortcuts}
+        gestures={CANVAS_GESTURES}
+        onClose={() => setHelpOpen(false)}
+      />
       {pendingRename && (
         <RenameConfirmModal
           impacts={pendingRename.impacts}

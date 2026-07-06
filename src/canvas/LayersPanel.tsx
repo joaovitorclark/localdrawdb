@@ -9,6 +9,8 @@ type Props = {
   onAddLayer: (n: string, c: string) => void;
   onFocusTable: (tableId: string) => void;
   onAutolayout?: () => void;
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 };
 
 const COLLAPSE_KEY = 'localdrawdb.layersPanelCollapsed';
@@ -21,8 +23,17 @@ function loadCollapsed(): boolean {
   }
 }
 
-export function LayersPanel({ layers, tables, onAddLayer, onFocusTable, onAutolayout }: Props) {
-  const [collapsed, setCollapsed] = useState(loadCollapsed);
+export function LayersPanel({
+  layers,
+  tables,
+  onAddLayer,
+  onFocusTable,
+  onAutolayout,
+  collapsed,
+  onCollapsedChange,
+}: Props) {
+  const [internalCollapsed, setInternalCollapsed] = useState(loadCollapsed);
+  const isCollapsed = collapsed ?? internalCollapsed;
   const [tableQuery, setTableQuery] = useState('');
   const hiddenLayers = useInteraction((s) => s.hiddenLayers);
   const toggleLayer = useInteraction((s) => s.toggleLayer);
@@ -45,28 +56,27 @@ export function LayersPanel({ layers, tables, onAddLayer, onFocusTable, onAutola
   }, [tables, tableQuery]);
 
   const toggleCollapsed = () => {
-    setCollapsed((c) => {
-      const next = !c;
-      try {
-        localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+    const next = !isCollapsed;
+    setInternalCollapsed(next);
+    onCollapsedChange?.(next);
+    try {
+      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
   };
 
   return (
-    <div className={`layers-panel ${collapsed ? 'is-collapsed' : ''}`}>
+    <div className={`layers-panel ${isCollapsed ? 'is-collapsed' : ''}`}>
       <button
         type="button"
         className="layers-panel__collapse"
         onClick={toggleCollapsed}
-        title={collapsed ? 'Expandir painel' : 'Recolher painel'}
+        title={isCollapsed ? 'Expandir painel' : 'Recolher painel'}
       >
-        {collapsed ? '◂ Camadas' : '▾ Camadas e tabelas'}
+        {isCollapsed ? '◂ Camadas' : '▾ Camadas e tabelas'}
       </button>
-      {!collapsed && (
+      {!isCollapsed && (
         <>
           <div className="layers-panel__title">Camadas</div>
           {layers.map((l) => (

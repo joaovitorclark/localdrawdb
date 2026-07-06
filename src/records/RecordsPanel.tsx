@@ -10,6 +10,8 @@ type Props = {
   refs: RefView[];
   dbml: string;
   onApply: (next: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
 /** Constraints da tabela ativa, derivadas das colunas (pk/notNull) e dos refs (FK). */
@@ -63,8 +65,9 @@ function NoteField({
   );
 }
 
-export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
-  const [open, setOpen] = useState(true);
+export function RecordsPanel({ records, tables, refs, dbml, onApply, open, onOpenChange }: Props) {
+  const [internalOpen, setInternalOpen] = useState(true);
+  const isOpen = open ?? internalOpen;
   const selectedTable = useInteraction((s) => s.selectedTable);
   const selectedColumn = useInteraction((s) => s.selectedColumn);
   const selectedGroup = useInteraction((s) => s.selectedGroup);
@@ -143,11 +146,18 @@ export function RecordsPanel({ records, tables, refs, dbml, onApply }: Props) {
   };
 
   return (
-    <div className={`records-panel ${open ? 'is-open' : ''}`}>
-      <button className="records-panel__toggle" onClick={() => setOpen((o) => !o)}>
-        {open ? '▾' : '▸'} Dados (amostra) · {Math.max(panelCount, 1)} tabela(s)
+    <div className={`records-panel ${isOpen ? 'is-open' : ''}`}>
+      <button
+        className="records-panel__toggle"
+        onClick={() => {
+          const next = !isOpen;
+          setInternalOpen(next);
+          onOpenChange?.(next);
+        }}
+      >
+        {isOpen ? '▾' : '▸'} Dados (amostra) · {Math.max(panelCount, 1)} tabela(s)
       </button>
-      {open && (
+      {isOpen && (
         <div className="records-panel__body">
           {effectiveTableId && (
             <div className="records-table records-table--notes">
