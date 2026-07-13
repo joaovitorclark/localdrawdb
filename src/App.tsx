@@ -716,6 +716,14 @@ export default function App() {
     [focusTable],
   );
 
+  const focusColumn = useCallback(
+    (tableId: string, columnName: string) => {
+      focusTableWithPan(tableId);
+      useInteraction.getState().selectColumn({ table: tableId, column: columnName });
+    },
+    [focusTableWithPan],
+  );
+
   const syncCanvasToEditorLine = useCallback(
     (line0: number) => {
       if (!shouldSyncCursorLine(line0)) return;
@@ -1455,10 +1463,14 @@ export default function App() {
     () =>
       buildCommands({
         tables: activeModel.tables.map((table) => ({ id: table.id, name: table.name, schema: table.schema })),
+        columns: activeModel.tables.flatMap((table) =>
+          table.columns.map((field) => ({ tableId: table.id, columnName: field.name })),
+        ),
         actions: paletteActions,
         onFocusTable: focusTableWithPan,
+        onFocusColumn: focusColumn,
       }),
-    [activeModel.tables, focusTableWithPan, paletteActions],
+    [activeModel.tables, focusTableWithPan, focusColumn, paletteActions],
   );
 
   const isMac =

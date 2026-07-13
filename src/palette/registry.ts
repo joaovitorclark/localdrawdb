@@ -1,4 +1,4 @@
-export type CommandKind = 'table' | 'action';
+export type CommandKind = 'table' | 'column' | 'action';
 
 export type Command = {
   id: string;
@@ -6,6 +6,10 @@ export type Command = {
   kind: CommandKind;
   shortcut?: string;
   keywords?: string[];
+  /** Apenas para kind === 'column'. */
+  tableId?: string;
+  /** Apenas para kind === 'column'. */
+  columnName?: string;
   run: () => void | Promise<void>;
 };
 
@@ -17,10 +21,17 @@ export type CommandTable = {
   schema?: string;
 };
 
+export type CommandColumn = {
+  tableId: string;
+  columnName: string;
+};
+
 type BuildCommandsInput = {
   tables: CommandTable[];
+  columns?: CommandColumn[];
   actions: CommandAction[];
   onFocusTable: (tableId: string) => void;
+  onFocusColumn?: (tableId: string, columnName: string) => void;
 };
 
 function normalizeText(value: string): string {
@@ -36,6 +47,17 @@ function compactText(value: string): string {
 
 function searchableTexts(command: Command): string[] {
   if (command.kind === 'table') {
+    return [
+      normalizeText(command.label),
+      compactText(command.label),
+      ...command.label
+        .split(/[._\s/-]+/)
+        .map((part) => normalizeText(part))
+        .filter(Boolean),
+    ];
+  }
+
+  if (command.kind === 'column') {
     return [
       normalizeText(command.label),
       compactText(command.label),
@@ -71,7 +93,9 @@ function commandMatches(command: Command, tokens: string[]): { matched: boolean;
   return { matched: true, score };
 }
 
-export function buildCommands({ tables, actions, onFocusTable }: BuildCommandsInput): Command[] {
+const KIND_RANK: Record<CommandKind, number> = { table: 0, column: 1, action: 2 };
+
+export function buildCommands({ tables, columns, actions, onFocusTable, onFocusColumn }: BuildCommandsInput): Command[] {
   const tableCommands: Command[] = [...tables]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((table) => ({
@@ -82,21 +106,41 @@ export function buildCommands({ tables, actions, onFocusTable }: BuildCommandsIn
       run: () => onFocusTable(table.id),
     }));
 
+  const columnCommands: Command[] = (columns ?? [])
+    .slice()
+    .sort((a, b) =>
+      a.tableId.localeCompare(b.tableId) || a.columnName.localeCompare(b.columnName),
+    )
+    .map((c) => ({
+      id: `column:${c.tableId}.${c.columnName}`,
+      label: `${c.tableId}.${c.columnName}`,
+      kind: 'column' as const,
+      run: () => onFocusColumn?.(c.tableId, c.columnName),
+    }));
+
   const actionCommands: Command[] = actions.map((action) => ({
     ...action,
     kind: 'action',
   }));
 
-  return [...tableCommands, ...actionCommands];
+  return [...tableCommands, ...columnCommands, ...actionCommands];
 }
 
 export function filterCommands(commands: Command[], query: string, limit = 12): Command[] {
   if (limit <= 0) return [];
   const normalized = normalizeText(query).trim();
-  if (!normalized) return commands.slice(0, limit);
+  if (!normalized) {
+    return commands
+      .filter((c) => c.kind !== 'column')
+      .slice(0, limit);
+  }
 
   const tokens = normalized.split(/\s+/).map((token) => compactText(token)).filter(Boolean);
-  if (!tokens.length) return commands.slice(0, limit);
+  if (!tokens.length) {
+    return commands
+      .filter((c) => c.kind !== 'column')
+      .slice(0, limit);
+  }
   const matched = commands
     .map((command, index) => {
       const result = commandMatches(command, tokens);
@@ -105,7 +149,8 @@ export function filterCommands(commands: Command[], query: string, limit = 12): 
     .filter((entry) => entry.matched);
 
   matched.sort((a, b) => {
-    if (a.command.kind !== b.command.kind) return a.command.kind === 'table' ? -1 : 1;
+    const r = KIND_RANK[a.command.kind] - KIND_RANK[b.command.kind];
+    if (r) return r;
     if (a.score !== b.score) return a.score - b.score;
     return a.index - b.index;
   });
