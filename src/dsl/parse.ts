@@ -112,6 +112,46 @@ function tableIdMatches(member: string, tableId: string): boolean {
   return a.split('.').pop() === b.split('.').pop();
 }
 
+/**
+ * Normaliza um id de tabela como o parser o enxerga: minúsculas + trim.
+ * Usado para detectar duplicatas antes de mutar o DBML (A3 do audit
+ * 2026-07-13) — antes desse helper, addTable/renameTable aceitavam
+ * nomes como `Gold.Dim_Customer` mesmo já existindo `gold.dim_customer`,
+ * corrompendo o modelo silenciosamente.
+ */
+export function normalizeTableId(id: string): string {
+  return stripQuotes(id).toLowerCase();
+}
+
+/** Mesma normalização mas só minúsculas + trim (sem strip de aspas/backticks). */
+export function normalizeColumnName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/** Retorna o id existente que colide com `candidate` (case-insensitive, esquema opcional), ou null. */
+export function findDuplicateTableId(candidate: string, existing: string[]): string | null {
+  const norm = normalizeTableId(candidate);
+  if (!norm) return null;
+  const candShort = norm.split('.').pop();
+  for (const id of existing) {
+    const existingNorm = normalizeTableId(id);
+    if (!existingNorm) continue;
+    if (existingNorm === norm) return id;
+    if (candShort && existingNorm.split('.').pop() === candShort) return id;
+  }
+  return null;
+}
+
+/** Retorna o nome existente que colide com `candidate` (case-insensitive), ou null. */
+export function findDuplicateColumnName(candidate: string, existing: string[]): string | null {
+  const norm = normalizeColumnName(candidate);
+  if (!norm) return null;
+  for (const name of existing) {
+    if (normalizeColumnName(name) === norm) return name;
+  }
+  return null;
+}
+
 /** TableGroup no DBML → campo group das tabelas (páginas do canvas). */
 function applyTableGroupMembership(dbml: string, tables: TableView[]): void {
   for (const b of splitDbmlBlocks(dbml)) {

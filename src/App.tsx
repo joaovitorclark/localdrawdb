@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useDeferredValue, startTransition, type MouseEvent as ReactMouseEvent } from 'react';
 import type { EditorHandle } from './editor/Editor';
 import { Canvas } from './canvas/Canvas';
-import { METADATA_SNIPPET, newTableTemplate, parseDbml, type ParseResult } from './dsl/parse';
+import { METADATA_SNIPPET, newTableTemplate, parseDbml, findDuplicateTableId, findDuplicateColumnName, type ParseResult } from './dsl/parse';
 import { validateModel } from './dsl/validateModel';
 import { splitDbmlBlocks } from './dsl/blocks';
 import { organize } from './dsl/organize';
@@ -941,26 +941,36 @@ export default function App() {
     () => ({
       onSelectColumn: (table, column) => selectColumn({ table, column }),
       onRenameColumn: (table, oldName, newName) => {
+        const trimmed = newName.trim();
+        const dup = findDuplicateColumnName(trimmed, activeModel.tables.find((t) => t.id === table)?.columns.map((c) => c.name).filter((n) => n !== oldName) ?? []);
+        if (dup) {
+          pushStatus(`Coluna "${dup}" já existe em "${table}" — escolha outro nome.`);
+          return;
+        }
         setDbml((d) => {
-          const next = renameColumnAllRefs(d, table, oldName, newName);
+          const next = renameColumnAllRefs(d, table, oldName, trimmed);
           prevDbmlRef.current = next;
           return next;
         });
-        // Migra a seleção para o novo nome — senão o painel de campo (ColumnPanel),
-        // preso ao selectedColumn, continua mostrando o nome antigo (bug v18).
         const sel = useInteraction.getState().selectedColumn;
         if (sel?.table === table && sel?.column === oldName) {
-          selectColumn({ table, column: newName.trim() });
+          selectColumn({ table, column: trimmed });
         }
       },
       onGoToColumn: goToColumn,
       onRenameTable: (tableId, newName) => {
+        const trimmed = newName.trim();
+        const dup = findDuplicateTableId(trimmed, activeModel.tables.map((t) => t.id).filter((id) => id !== tableId));
+        if (dup) {
+          pushStatus(`Tabela "${dup}" já existe — escolha outro nome.`);
+          return;
+        }
         setDbml((d) => {
-          const next = renameTable(d, tableId, newName);
+          const next = renameTable(d, tableId, trimmed);
           prevDbmlRef.current = next;
           return next;
         });
-        migrateTableId(tableId, newName.trim());
+        migrateTableId(tableId, trimmed);
       },
       onRemoveTable: handleRemoveTable,
       onAddColumn: (table) => setDbml((d) => addColumn(d, table, 'nova_coluna', 'string')),
@@ -1313,6 +1323,11 @@ export default function App() {
     const name = prompt('Nome da nova tabela (schema.tabela):', 'novo_schema.nova_tabela');
     if (!name?.trim()) return;
     const tableId = name.trim();
+    const dup = findDuplicateTableId(tableId, activeModel.tables.map((t) => t.id));
+    if (dup) {
+      pushStatus(`Tabela "${dup}" já existe — escolha outro nome.`);
+      return;
+    }
     mutateDbml((d) => d + newTableTemplate(tableId));
     setPositions((prev) => ({
       ...prev,
