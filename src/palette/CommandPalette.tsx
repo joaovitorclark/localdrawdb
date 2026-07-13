@@ -82,7 +82,7 @@ export function CommandPalette({ open, commands, onClose }: Props) {
           ref={inputRef}
           className="command-palette__input"
           type="search"
-          placeholder="Buscar tabela ou ação…"
+          placeholder="Buscar tabela, coluna ou ação…"
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);
@@ -94,27 +94,46 @@ export function CommandPalette({ open, commands, onClose }: Props) {
           {results.length === 0 && (
             <li className="command-palette__empty">Nenhum resultado</li>
           )}
-          {results.map((command, index) => (
-            <li key={command.id}>
-              <button
-                type="button"
-                className={`command-palette__item${index === selectedIndex ? ' is-active' : ''}`}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => {
-                  void command.run();
-                  onClose();
-                }}
-              >
-                <span className="command-palette__label">{command.label}</span>
-                <span className="command-palette__meta">
-                  {command.shortcut && <span className="command-palette__shortcut">{command.shortcut}</span>}
-                  <span className="command-palette__kind">
-                    {command.kind === 'table' ? 'Tabela' : 'Ação'}
+          {results.map((command, index) => {
+            const isColumn = command.kind === 'column';
+            const labelParts = isColumn ? command.label.split('.') : null;
+            const columnName = labelParts ? labelParts[labelParts.length - 1] : '';
+            const tableLabel = isColumn
+              ? command.label.slice(0, command.label.length - columnName.length - 1)
+              : '';
+            return (
+              <li key={command.id}>
+                <button
+                  type="button"
+                  className={`command-palette__item${index === selectedIndex ? ' is-active' : ''}`}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                  onClick={() => {
+                    void command.run();
+                    onClose();
+                  }}
+                >
+                  <span className="command-palette__label">
+                    {isColumn ? (
+                      <>
+                        <span className="cp-table">{tableLabel}</span>
+                        <span className="cp-dot">.</span>
+                        <span className="cp-col">{columnName}</span>
+                      </>
+                    ) : (
+                      command.label
+                    )}
                   </span>
-                </span>
-              </button>
-            </li>
-          ))}
+                  <span className="command-palette__meta">
+                    {command.shortcut && <span className="command-palette__shortcut">{command.shortcut}</span>}
+                    <span className="command-palette__kind">
+                      {command.kind === 'table' ? 'Tabela' :
+                       command.kind === 'column' ? 'Coluna' : 'Ação'}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </div>
     </div>,

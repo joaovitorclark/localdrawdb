@@ -2600,6 +2600,22 @@ body {
   font-weight: 500;
 }
 
+.cp-table {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.cp-col {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cp-dot {
+  color: var(--muted);
+  margin: 0 2px;
+  font-weight: 400;
+}
+
 .command-palette__meta {
   display: inline-flex;
   align-items: center;
