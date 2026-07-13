@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useDeferredValue, startTransition, type MouseEvent as ReactMouseEvent } from 'react';
 import type { EditorHandle } from './editor/Editor';
 import { Canvas } from './canvas/Canvas';
-import { METADATA_SNIPPET, newTableTemplate, parseDbml, type ParseResult } from './dsl/parse';
+import { METADATA_SNIPPET, newTableTemplate, parseDbml, findDuplicateTableId, findDuplicateColumnName, type ParseResult } from './dsl/parse';
 import { validateModel } from './dsl/validateModel';
 import { splitDbmlBlocks } from './dsl/blocks';
 import { organize } from './dsl/organize';
@@ -865,6 +865,8 @@ export default function App() {
   lineageRef.current = lineage;
   const layersArrRef = useRef(layersArr);
   layersArrRef.current = layersArr;
+  const layerMembershipRef = useRef<Record<string, string>>(layerMembership);
+  layerMembershipRef.current = layerMembership;
 
   // Computa, por tabela, a cor de cabeçalho e os metadados (PKs/FKs/linhagem/etc.)
   // em uma única passada. Esses valores vão para o `data` do nó, permitindo memoizar
@@ -945,30 +947,49 @@ export default function App() {
   }, [canvasActiveModel, canvasLineage, colors, layersArr, layerOf, externalLinksByTable]);
 
   // Ações do canvas (mutações de documento e cores) expostas via contexto.
-  const actions = useMemo<CanvasActions>(
+// Memo estável (deps vazias) — handlers leem estado via refs para evitar
+// rebuild em cascata a cada mudança de activeModel/layers/layerOf, que
+// antes re-renderizava todos os TableNodes do canvas.
+const actions = useMemo<CanvasActions>(
     () => ({
       onSelectColumn: (table, column) => selectColumn({ table, column }),
       onRenameColumn: (table, oldName, newName) => {
+        const trimmed = newName.trim();
+        const dup = findDuplicateColumnName(
+          trimmed,
+          modelRef.current.tables.find((t) => t.id === table)?.columns.map((c) => c.name).filter((n) => n !== oldName) ?? [],
+        );
+        if (dup) {
+          pushStatus(`Coluna "${dup}" já existe em "${table}" — escolha outro nome.`);
+          return;
+        }
         setDbml((d) => {
-          const next = renameColumnAllRefs(d, table, oldName, newName);
+          const next = renameColumnAllRefs(d, table, oldName, trimmed);
           prevDbmlRef.current = next;
           return next;
         });
-        // Migra a seleção para o novo nome — senão o painel de campo (ColumnPanel),
-        // preso ao selectedColumn, continua mostrando o nome antigo (bug v18).
         const sel = useInteraction.getState().selectedColumn;
         if (sel?.table === table && sel?.column === oldName) {
-          selectColumn({ table, column: newName.trim() });
+          selectColumn({ table, column: trimmed });
         }
       },
       onGoToColumn: goToColumn,
       onRenameTable: (tableId, newName) => {
+        const trimmed = newName.trim();
+        const dup = findDuplicateTableId(
+          trimmed,
+          modelRef.current.tables.map((t) => t.id).filter((id) => id !== tableId),
+        );
+        if (dup) {
+          pushStatus(`Tabela "${dup}" já existe — escolha outro nome.`);
+          return;
+        }
         setDbml((d) => {
-          const next = renameTable(d, tableId, newName);
+          const next = renameTable(d, tableId, trimmed);
           prevDbmlRef.current = next;
           return next;
         });
-        migrateTableId(tableId, newName.trim());
+        migrateTableId(tableId, trimmed);
       },
       onRemoveTable: handleRemoveTable,
       onAddColumn: (table) => setDbml((d) => addColumn(d, table, 'nova_coluna', 'string')),
@@ -984,7 +1005,13 @@ export default function App() {
             ...(height != null ? { height: Math.round(height) } : {}),
           },
         })),
-      layerOf,
+      layerOf: (id) => {
+        const layerMembership = layerMembershipRef.current;
+        if (layerMembership[id]) return layerMembership[id];
+        const arr = layersArrRef.current;
+        const schema = id.includes('.') ? id.split('.')[0] : undefined;
+        return schema && arr.some((l) => l.id === schema) ? schema : undefined;
+      },
       layerColorOf: (layerId) => layerColorOf(layersArrRef.current, layerId),
       onSetLayer: (id, layerId) =>
         setDbml((d) => setTableLayer(d, id, layerId, layerColorOf(layersArrRef.current, layerId ?? undefined))),
@@ -1015,7 +1042,8 @@ export default function App() {
         };
       },
     }),
-    [selectColumn, layerOf, layersArr, goToColumn, migrateTableId, handleRemoveTable],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intencionalmente vazio: actions é estável; handlers leem refs/setters estáveis
+    [],
   );
 
   const handleCreateLineage = (source: string, target: string) => {
@@ -1058,8 +1086,11 @@ export default function App() {
       }),
     );
   };
-  const handleToggleGroup = (name: string) =>
-    setCollapsedGroups((prev) => (prev.includes(name) ? prev.filter((g) => g !== name) : [...prev, name]));
+  const handleToggleGroup = useCallback(
+    (name: string) =>
+      setCollapsedGroups((prev) => (prev.includes(name) ? prev.filter((g) => g !== name) : [...prev, name])),
+    [],
+  );
 
   const handleCreateRef = (fromTbl: string, fromCol: string, toTbl: string, toCol: string) => {
     if (!fromCol || !toCol) return;
@@ -1321,6 +1352,11 @@ export default function App() {
     const name = prompt('Nome da nova tabela (schema.tabela):', 'novo_schema.nova_tabela');
     if (!name?.trim()) return;
     const tableId = name.trim();
+    const dup = findDuplicateTableId(tableId, activeModel.tables.map((t) => t.id));
+    if (dup) {
+      pushStatus(`Tabela "${dup}" já existe — escolha outro nome.`);
+      return;
+    }
     mutateDbml((d) => d + newTableTemplate(tableId));
     setPositions((prev) => ({
       ...prev,
