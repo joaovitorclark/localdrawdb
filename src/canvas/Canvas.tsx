@@ -346,8 +346,16 @@ export function Canvas(props: Props) {
   const onSelectionChange = useCallback(
     ({ nodes: selNodes, edges: selEdges }: OnSelectionChangeParams) => {
       const ids = selNodes.filter((n) => n.type === 'table').map((n) => n.id);
+      // Só sincroniza se a seleção do ReactFlow realmente divergiu do estado interno.
+      // Caso contrário, é só reflexo de useCanvasNodes ter aplicado `selected: true`
+      // baseado em selectedTableIds (ex.: focar uma coluna via command palette, ou
+      // clicar numa coluna que também seleciona sua tabela). Sem esse guarda,
+      // `selectColumn(null)` apaga a coluna destacada que o usuário acabou de escolher.
+      const prev = useInteraction.getState().selectedTableIds;
+      const sameAsState =
+        ids.length === prev.length && ids.every((id, idx) => id === prev[idx]);
       setSelectedTableIds(ids);
-      if (ids.length) selectColumn(null);
+      if (ids.length && !sameAsState) selectColumn(null);
 
       if (!lineageMode) return;
 
@@ -361,7 +369,7 @@ export function Canvas(props: Props) {
         setFocusedFieldMapping(null);
       }
     },
-    [lineageMode, setSelectedTableIds, selectColumn, selectFieldLineageMapping, setFocusedFieldMapping],
+    [lineageMode, setSelectedTableIds, selectColumn, selectFieldLineageMapping, setFocusedFieldMapping, useInteraction],
   );
 
   const isValidConnection = useCallback(
