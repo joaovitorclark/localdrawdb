@@ -1060,8 +1060,11 @@ export default function App() {
       }),
     );
   };
-  const handleToggleGroup = (name: string) =>
-    setCollapsedGroups((prev) => (prev.includes(name) ? prev.filter((g) => g !== name) : [...prev, name]));
+  const handleToggleGroup = useCallback(
+    (name: string) =>
+      setCollapsedGroups((prev) => (prev.includes(name) ? prev.filter((g) => g !== name) : [...prev, name])),
+    [],
+  );
 
   const handleCreateRef = (fromTbl: string, fromCol: string, toTbl: string, toCol: string) => {
     if (!fromCol || !toCol) return;
