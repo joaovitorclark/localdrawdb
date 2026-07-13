@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, memo, type ReactNode } from 'react';
 import { Handle, Position, useNodeId, useUpdateNodeInternals } from 'reactflow';
 import type { ColumnView } from '../dsl/parse';
 import {
@@ -7,9 +7,11 @@ import {
   COLUMN_VIRTUAL_VIEW_ROWS,
 } from './scaleLimits';
 import { useTableScrollStore } from './tableScrollStore';
+import { computeVirtualWindow } from './hooks/useVirtualWindow';
 import { Key } from '../icons';
 
 const VIEW_H = COLUMN_VIRTUAL_VIEW_ROWS * COLUMN_VIRTUAL_ROW_H;
+const OVERSCAN = 5;
 
 type ColumnRowProps = {
   column: ColumnView;
@@ -26,7 +28,7 @@ type ColumnRowProps = {
   onCancelEdit: () => void;
 };
 
-function ColumnRowContent({
+function ColumnRowContentImpl({
   column: c,
   selectedColumn,
   fieldLineageVisible,
@@ -106,15 +108,27 @@ function ColumnRowContent({
       )}
       {lineageMode && (
         <Handle
-          type="source"
-          position={Position.Right}
-          id={`fl:s:${c.name}`}
-          className="col-handle col-handle--field-lin nodrag nopan"
+          type="source" position={Position.Right}
+          id={`fl:s:${c.name}`} className="col-handle col-handle--field-lin nodrag nopan"
         />
       )}
     </div>
   );
 }
+
+/** Memoizado por coluna: re-renderiza só quando a coluna individual muda. */
+const ColumnRowContent = memo(ColumnRowContentImpl, (prev, next) => {
+  if (prev.column !== next.column) return false;
+  if (prev.selectedColumn !== next.selectedColumn) return false;
+  if (prev.editing !== next.editing) return false;
+  if (prev.draft !== next.draft) return false;
+  if (prev.lineageMode !== next.lineageMode) return false;
+  if (prev.fieldLineageVisible !== next.fieldLineageVisible) return false;
+  if (prev.scrollable !== next.scrollable) return false;
+  // Handlers: re-render quando editing/draft mudam (são usados pelo input)
+  if (prev.editing === prev.column.name) return false;
+  return true;
+});
 
 /** Posiciona scroll para coluna selecionada/em edição. */
 function scrollToColumnIndex(el: HTMLDivElement, index: number): void {
@@ -159,10 +173,11 @@ export function TableColumnList(props: TableColumnListProps): ReactNode {
   const nodeId = useNodeId();
   const updateNodeInternals = useUpdateNodeInternals();
   const setScrollTop = useTableScrollStore((s) => s.setScrollTop);
+  const [scrollTop, setScrollTopLocal] = useState(0);
 
   const publishScroll = useCallback(
-    (scrollTop: number) => {
-      if (nodeId) setScrollTop(nodeId, scrollTop);
+    (next: number) => {
+      if (nodeId) setScrollTop(nodeId, next);
     },
     [nodeId, setScrollTop],
   );
@@ -194,11 +209,6 @@ export function TableColumnList(props: TableColumnListProps): ReactNode {
     requestAnimationFrame(syncEdgeAnchors);
   }, [scrollable, editing, scrollToColumn, publishScroll, syncEdgeAnchors]);
 
-  useEffect(() => {
-    if (!scrollable || !nodeId) return;
-    publishScroll(scrollRef.current?.scrollTop ?? 0);
-  }, [scrollable, nodeId, publishScroll]);
-
   const rowProps: Omit<ColumnRowProps, 'column'> = {
     selectedColumn,
     fieldLineageVisible,
@@ -213,11 +223,25 @@ export function TableColumnList(props: TableColumnListProps): ReactNode {
     onCancelEdit,
   };
 
-  const rows = columns.map((c) => <ColumnRowContent key={c.name} {...rowProps} column={c} />);
-
   if (!scrollable) {
-    return <div className="table-node__cols">{rows}</div>;
+    return (
+      <div className="table-node__cols">
+        {columns.map((c) => <ColumnRowContent key={c.name} {...rowProps} column={c} />)}
+      </div>
+    );
   }
+
+  // Virtualização real (A1 do audit 2026-07-13): só renderiza linhas dentro
+  // da janela visível + overscan. Para 200 colunas, isso reduz render de
+  // 200 ColumnRowContent + 800 Handles para ~20 linhas + 80 Handles.
+  const win = computeVirtualWindow({
+    totalItems: columns.length,
+    itemHeight: COLUMN_VIRTUAL_ROW_H,
+    viewportHeight: VIEW_H,
+    scrollTop,
+    overscan: OVERSCAN,
+  });
+  const visible = columns.slice(win.startIndex, win.endIndex);
 
   return (
     <div
@@ -225,11 +249,19 @@ export function TableColumnList(props: TableColumnListProps): ReactNode {
       className="table-node__cols table-node__cols--scroll"
       style={{ maxHeight: VIEW_H }}
       onScroll={(e) => {
-        publishScroll(e.currentTarget.scrollTop);
+        const top = e.currentTarget.scrollTop;
+        setScrollTopLocal(top);
+        publishScroll(top);
         requestAnimationFrame(syncEdgeAnchors);
       }}
     >
-      {rows}
+      <div style={{ height: win.totalHeight, position: 'relative' }}>
+        <div style={{ transform: `translateY(${win.offsetY}px)` }}>
+          {visible.map((c) => (
+            <ColumnRowContent key={c.name} {...rowProps} column={c} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
