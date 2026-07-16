@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { detectFact, computeDegrees, bfsLayers } from '../factDetector';
-import type { ParseResult, TableView } from '../../dsl/parse';
+import type { ParseResult, RefView, TableView } from '../../dsl/parse';
 
 function tv(id: string, group?: string): TableView {
   return {
@@ -9,6 +9,19 @@ function tv(id: string, group?: string): TableView {
     schema: id.includes('.') ? id.split('.')[0] : undefined,
     group,
     columns: [],
+  };
+}
+
+function ref(id: string, source: string, target: string): RefView {
+  return {
+    id,
+    source,
+    target,
+    label: `${source}.id > ${target}.id`,
+    fromCol: 'id',
+    toCol: 'id',
+    fromRel: '*',
+    toRel: '1',
   };
 }
 
@@ -21,8 +34,8 @@ describe('detectFact', () => {
     const parsed: ParseResult = {
       tables: [tv('sales.orders'), tv('sales.orders_fact', 'fact'), tv('sales.customers')],
       refs: [
-        { id: 'r1', source: 'sales.orders_fact', target: 'sales.customers' },
-        { id: 'r2', source: 'sales.orders_fact', target: 'sales.orders' },
+        ref('r1', 'sales.orders_fact', 'sales.customers'),
+        ref('r2', 'sales.orders_fact', 'sales.orders'),
       ],
       records: [], layerGroups: [], lineage: [], lineageFields: [], rolenames: [], colors: {},
     };
@@ -35,9 +48,9 @@ describe('detectFact', () => {
     const parsed: ParseResult = {
       tables: [tv('fato'), tv('d1'), tv('d2'), tv('d3')],
       refs: [
-        { id: 'r1', source: 'fato', target: 'd1' },
-        { id: 'r2', source: 'fato', target: 'd2' },
-        { id: 'r3', source: 'fato', target: 'd3' },
+        ref('r1', 'fato', 'd1'),
+        ref('r2', 'fato', 'd2'),
+        ref('r3', 'fato', 'd3'),
       ],
       records: [], layerGroups: [], lineage: [], lineageFields: [], rolenames: [], colors: {},
     };
@@ -49,16 +62,13 @@ describe('detectFact', () => {
   it('cai para grau total quando ninguém tem outgoing > 0', () => {
     const parsed: ParseResult = {
       tables: [tv('a'), tv('b'), tv('c')],
-      // grafo onde ninguém tem outgoing > 1, mas c tem mais incoming
       refs: [
-        { id: 'r1', source: 'a', target: 'c' },
-        { id: 'r2', source: 'b', target: 'c' },
+        ref('r1', 'a', 'c'),
+        ref('r2', 'b', 'c'),
       ],
       records: [], layerGroups: [], lineage: [], lineageFields: [], rolenames: [], colors: {},
     };
     const r = detectFact(parsed);
-    // Todos têm outgoing ≤ 1, então cai para total-degree.
-    // c tem grau total 2 (in=2, out=0); a tem 1; b tem 1.
     expect(r?.id).toBe('c');
     expect(r?.reason).toBe('total-degree');
   });
@@ -67,9 +77,8 @@ describe('detectFact', () => {
     const parsed: ParseResult = {
       tables: [tv('a'), tv('b'), tv('c')],
       refs: [
-        // c tem outgoing 2 (mais que qualquer outro)
-        { id: 'r1', source: 'c', target: 'a' },
-        { id: 'r2', source: 'c', target: 'b' },
+        ref('r1', 'c', 'a'),
+        ref('r2', 'c', 'b'),
       ],
       records: [], layerGroups: [], lineage: [], lineageFields: [], rolenames: [], colors: {},
     };
@@ -83,9 +92,9 @@ describe('computeDegrees', () => {
   it('conta out/in corretamente', () => {
     const tables = [tv('a'), tv('b'), tv('c')];
     const refs = [
-      { source: 'a', target: 'b' },
-      { source: 'a', target: 'c' },
-      { source: 'b', target: 'c' },
+      ref('r1', 'a', 'b'),
+      ref('r2', 'a', 'c'),
+      ref('r3', 'b', 'c'),
     ];
     const { out, inc } = computeDegrees(tables, refs);
     expect(out.get('a')).toBe(2);
@@ -99,8 +108,8 @@ describe('computeDegrees', () => {
   it('ignora refs que apontam para tabelas fora do conjunto', () => {
     const tables = [tv('a'), tv('b')];
     const refs = [
-      { source: 'a', target: 'b' },
-      { source: 'a', target: 'ghost' },
+      ref('r1', 'a', 'b'),
+      ref('r2', 'a', 'ghost'),
     ];
     const { out, inc } = computeDegrees(tables, refs);
     expect(out.get('a')).toBe(1);
@@ -112,9 +121,9 @@ describe('bfsLayers', () => {
   it('atribui camadas incrementais via BFS', () => {
     const tables = [tv('fato'), tv('d1'), tv('d2'), tv('sd1')];
     const refs = [
-      { source: 'fato', target: 'd1' },
-      { source: 'fato', target: 'd2' },
-      { source: 'd1', target: 'sd1' },
+      ref('r1', 'fato', 'd1'),
+      ref('r2', 'fato', 'd2'),
+      ref('r3', 'd1', 'sd1'),
     ];
     const layers = bfsLayers('fato', tables, refs);
     expect(layers.get('fato')).toBe(0);
@@ -126,8 +135,8 @@ describe('bfsLayers', () => {
   it('detecta ciclo e não trava', () => {
     const tables = [tv('a'), tv('b')];
     const refs = [
-      { source: 'a', target: 'b' },
-      { source: 'b', target: 'a' },
+      ref('r1', 'a', 'b'),
+      ref('r2', 'b', 'a'),
     ];
     const layers = bfsLayers('a', tables, refs);
     expect(layers.get('a')).toBe(0);
@@ -136,7 +145,7 @@ describe('bfsLayers', () => {
 
   it('tabelas isoladas vão para a camada após o máximo', () => {
     const tables = [tv('a'), tv('b'), tv('orphan')];
-    const refs = [{ source: 'a', target: 'b' }];
+    const refs = [ref('r1', 'a', 'b')];
     const layers = bfsLayers('a', tables, refs);
     expect(layers.get('orphan')).toBe(2);
   });
