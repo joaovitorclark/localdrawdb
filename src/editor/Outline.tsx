@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import React from 'react';
 import { splitDbmlBlocks, type Block } from '../dsl/blocks';
 import { computeVirtualWindow } from '../canvas/hooks/useVirtualWindow';
@@ -27,11 +27,49 @@ const ICONS: Record<string, string> = {
 const VIRTUALIZE_THRESHOLD = 80;
 const ROW_HEIGHT = 26; // ~26px por linha do outline (medido)
 const OVERSCAN = 8;
+const HEIGHT_STORAGE_KEY = 'localdrawdb.outline.height';
+const DEFAULT_HEIGHT = 200; // mesmo valor do CSS atual (.outline-panel max-height)
+const MIN_HEIGHT = 80;
+const MAX_HEIGHT_RATIO = 0.6; // até 60vh
 
 export function Outline({ dbml, onGoToLine, onFocusTable }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [query, setQuery] = useState('');
   const [scrollTop, setScrollTop] = useState(0);
+  const [height, setHeight] = useState<number>(() => {
+    try {
+      const raw = Number(localStorage.getItem(HEIGHT_STORAGE_KEY));
+      return Number.isFinite(raw) && raw >= MIN_HEIGHT ? raw : DEFAULT_HEIGHT;
+    } catch {
+      return DEFAULT_HEIGHT;
+    }
+  });
+
+  // Drag do handle inferior para redimensionar (mouse + touch).
+  const onResizeStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = height;
+    const maxHeight = Math.max(MIN_HEIGHT, Math.floor(window.innerHeight * MAX_HEIGHT_RATIO));
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.max(MIN_HEIGHT, Math.min(maxHeight, startHeight + (ev.clientY - startY)));
+      setHeight(next);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setHeight((h) => {
+        try {
+          localStorage.setItem(HEIGHT_STORAGE_KEY, String(Math.round(h)));
+        } catch {
+          /* ignore */
+        }
+        return h;
+      });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [height]);
 
   // useDeferredValue: splitDbmlBlocks é O(n) no tamanho do DBML. Quando o
   // usuário digita, o dbml muda a cada caractere; sem deferred, render fica
@@ -61,7 +99,10 @@ export function Outline({ dbml, onGoToLine, onFocusTable }: Props) {
   const virtualize = items.length > VIRTUALIZE_THRESHOLD;
 
   return (
-    <div className={`outline-panel ${collapsed ? 'is-collapsed' : ''}`}>
+    <div
+      className={`outline-panel ${collapsed ? 'is-collapsed' : ''}`}
+      style={collapsed ? undefined : { height }}
+    >
       <button className="outline-panel__toggle" onClick={() => setCollapsed((c) => !c)}>
         <Chevron dir={collapsed ? 'right' : 'down'} className="icon-inline" size={14} />
         {' '}Outline
@@ -115,6 +156,14 @@ export function Outline({ dbml, onGoToLine, onFocusTable }: Props) {
               );
             })()}
           </ul>
+          <div
+            className="outline-panel__resize-handle"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Redimensionar painel de outline"
+            title="Arraste para redimensionar"
+            onMouseDown={onResizeStart}
+          />
         </>
       )}
     </div>
