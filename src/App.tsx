@@ -5,7 +5,7 @@ import { METADATA_SNIPPET, newTableTemplate, parseDbml, findDuplicateTableId, fi
 import { validateModel } from './dsl/validateModel';
 import { splitDbmlBlocks } from './dsl/blocks';
 import { organize } from './dsl/organize';
-import { autolayoutLineagePositions, autolayoutPositions } from './canvas/autolayout';
+import { autolayoutLineagePositions, autolayoutPositions, autolayoutSnowflakePositions, autolayoutStarPositions } from './canvas/autolayout';
 import { defaultTablePosition } from './canvas/defaultTablePosition';
 import { ProblemsPanel } from './canvas/ProblemsPanel';
 import { StatusLog, type StatusLogEntry } from './canvas/StatusLog';
@@ -44,6 +44,7 @@ import {
 } from './editor/syncEditorCanvas';
 import { captureDiagramPng, downloadDataUrl } from './exportPng';
 import { ExportMenu } from './ExportMenu';
+import { OrganizeMenu } from './OrganizeMenu';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { Undo, Redo, Search } from './icons';
 import { Tooltip } from './Tooltip';
@@ -422,7 +423,7 @@ export default function App() {
     return () => clearTimeout(id);
   }, [autoSave, saveState, handleSave]);
 
-  // Após "Salvo ✓" (2s), volta para "Salvar" ocioso — evita o botão "Salvar"
+  // Após "Salvo" (2s), volta para "Salvar" ocioso — evita o botão "Salvar"
   // ficar fixo após salvar sem nova edição.
   useEffect(() => {
     if (saveState !== 'saved') return;
@@ -758,22 +759,31 @@ export default function App() {
     syncCanvasToEditorLine(editorCursorLineRef.current);
   }, [tableIdsKey, syncCanvasToEditorLine]);
 
-  const handleAutolayout = useCallback(() => {
+  const handleAutolayout = useCallback((variant?: 'star' | 'snowflake') => {
     const lineageMode = useInteraction.getState().lineageMode;
     const layoutModel = activePageIds.includes(ALL_PAGE_ID) ? canvasBaseModel : canvasActiveModel;
-    const base = lineageMode
-      ? autolayoutLineagePositions(layoutModel)
-      : autolayoutPositions(layoutModel, false);
-    const next = canvasStubs.length ? layoutExternalStubsOnTop(base, canvasStubs) : base;
-    setPositions(next);
-    setFitViewTrigger((n) => n + 1);
-    pushStatus(
-      lineageMode
+    let base: Positions;
+    let label: string;
+    if (variant === 'star') {
+      base = autolayoutStarPositions(layoutModel);
+      label = 'Canvas reorganizado em star schema';
+    } else if (variant === 'snowflake') {
+      base = autolayoutSnowflakePositions(layoutModel);
+      label = 'Canvas reorganizado em snowflake schema';
+    } else {
+      base = lineageMode
+        ? autolayoutLineagePositions(layoutModel)
+        : autolayoutPositions(layoutModel, false);
+      label = lineageMode
         ? `Canvas reorganizado para linhagem (${layoutModel.tables.length} tabelas)`
         : canvasStubs.length
           ? `Canvas reorganizado (${layoutModel.tables.length} tabelas, ${canvasStubs.length} grupo(s) externo(s) no topo)`
-          : `Canvas reorganizado (${layoutModel.tables.length} tabelas)`,
-    );
+          : `Canvas reorganizado (${layoutModel.tables.length} tabelas)`;
+    }
+    const next = canvasStubs.length ? layoutExternalStubsOnTop(base, canvasStubs) : base;
+    setPositions(next);
+    setFitViewTrigger((n) => n + 1);
+    pushStatus(label);
     setSaveState('dirty');
   }, [activePageIds, canvasBaseModel, canvasActiveModel, canvasStubs]);
 
@@ -1413,9 +1423,21 @@ const actions = useMemo<CanvasActions>(
       },
       {
         id: 'action:organize-canvas',
-        label: 'Organizar canvas',
-        keywords: ['autolayout', 'layout'],
-        run: handleAutolayout,
+        label: 'Organizar canvas (padrão)',
+        keywords: ['autolayout', 'layout', 'cluster'],
+        run: () => handleAutolayout(),
+      },
+      {
+        id: 'action:organize-canvas-star',
+        label: 'Organizar canvas (star)',
+        keywords: ['autolayout', 'layout', 'estrela', 'star', 'fato'],
+        run: () => handleAutolayout('star'),
+      },
+      {
+        id: 'action:organize-canvas-snowflake',
+        label: 'Organizar canvas (snowflake)',
+        keywords: ['autolayout', 'layout', 'snowflake'],
+        run: () => handleAutolayout('snowflake'),
       },
       ...api.EXPORT_OPTIONS.map((opt) => ({
         id: `action:export:${opt.id}`,
@@ -1552,7 +1574,10 @@ const actions = useMemo<CanvasActions>(
           </button>
         </Tooltip>
         <Tooltip label="Reordena: tabelas → refs → records">
-          <button onClick={handleOrganize}>Organizar</button>
+          <button onClick={handleOrganize}>Organizar DBML</button>
+        </Tooltip>
+        <Tooltip label="Reorganiza o canvas (padrão, estrela ou snowflake)">
+          <OrganizeMenu onPick={handleAutolayout} />
         </Tooltip>
         <button onClick={addTable}>+ Tabela</button>
         <Tooltip label="Insere o bloco de colunas de metadados padrão">
@@ -1581,7 +1606,7 @@ const actions = useMemo<CanvasActions>(
             disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'idle'}
           >
             {saveState === 'saving' ? 'Salvando…'
-              : saveState === 'saved' ? 'Salvo ✓'
+              : saveState === 'saved' ? 'Salvo'
               : saveState === 'error' ? 'Erro'
               : 'Salvar'}
           </button>

@@ -151,6 +151,63 @@ body {
 .toolbar__export-item:hover {
   background: #244a87;
 }
+/* Organizar canvas — variantes de autolayout (PR3) */
+.toolbar__organize-menu {
+  position: relative;
+  display: inline-block;
+}
+.toolbar__organize-trigger {
+  background: var(--brand-navy-700);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: var(--fs-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.toolbar__organize-trigger:hover {
+  background: #244a87;
+  border-color: var(--brand-green);
+}
+.toolbar__organize-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  min-width: 280px;
+  background: #2a3444;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.toolbar__organize-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  padding: 8px 12px;
+  font-size: var(--fs-md);
+  cursor: pointer;
+  gap: 2px;
+}
+.toolbar__organize-item:hover {
+  background: #244a87;
+}
+.toolbar__organize-item-label {
+  font-weight: 600;
+}
+.toolbar__organize-item-desc {
+  font-size: var(--fs-xs);
+  color: #a0aec0;
+}
 .toolbar__palette-btn {
   display: inline-flex;
   align-items: center;

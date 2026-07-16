@@ -100,7 +100,7 @@ export function ProjectSwitcher({
             onClick={() => current && handleRename(current)}
             disabled={!current}
           >
-            ✎
+            <Edit className="icon-inline" size={14} />
           </button>
         </Tooltip>
         <Tooltip label="Novo projeto">
@@ -199,7 +199,7 @@ export function ProjectSwitcher({
               onClick={() => current && handleRename(current)}
               disabled={!current}
             >
-              ✎ Renomear projeto
+              <Edit className="icon-inline" size={14} /> Renomear projeto
             </button>
             <button
               type="button"
