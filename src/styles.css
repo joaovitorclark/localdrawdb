@@ -213,6 +213,80 @@ body {
   align-items: center;
   gap: 6px;
 }
+
+/* Diff DBML (PR4.6) */
+.dbml-diff {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  width: 540px;
+  max-width: calc(100vw - 24px);
+  max-height: 50vh;
+  z-index: 200;
+  background: #1a202c;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  font-family: monospace;
+  font-size: var(--fs-xs);
+}
+.dbml-diff__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2d3748;
+  color: #e2e8f0;
+}
+.dbml-diff__counts {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 4px;
+  font-size: var(--fs-xs);
+}
+.dbml-diff__add {
+  color: #16a34a;
+}
+.dbml-diff__del {
+  color: #ef4444;
+}
+.dbml-diff__close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #a0aec0;
+  cursor: pointer;
+}
+.dbml-diff__body {
+  margin: 0;
+  padding: 8px 0;
+  overflow: auto;
+  color: #cbd5e0;
+}
+.dbml-diff__line {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px;
+  white-space: pre;
+}
+.dbml-diff__line--add {
+  background: rgba(22, 163, 74, 0.18);
+  color: #bbf7d0;
+}
+.dbml-diff__line--del {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+}
+.dbml-diff__line--same {
+  color: #94a3b8;
+}
+.dbml-diff__sign {
+  width: 12px;
+  user-select: none;
+  flex-shrink: 0;
+}
 .sep {
   width: 1px;
   height: 22px;

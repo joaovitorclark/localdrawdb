@@ -45,6 +45,7 @@ import {
 import { captureDiagramPng, downloadDataUrl } from './exportPng';
 import { ExportMenu } from './ExportMenu';
 import { OrganizeMenu } from './OrganizeMenu';
+import { DbmlDiff } from './components/DbmlDiff';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { Undo, Redo, Search } from './icons';
 import { Tooltip } from './Tooltip';
@@ -193,6 +194,7 @@ export default function App() {
   const [autoSave, setAutoSave] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(false);
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(() => loadStoredFlag('localdrawdb.layersPanelCollapsed', false));
   const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(() => loadStoredFlag('localdrawdb.pagesPanelCollapsed', false));
   const [recordsPanelOpen, setRecordsPanelOpen] = useState(true);
@@ -1598,6 +1600,16 @@ const actions = useMemo<CanvasActions>(
             <Search className="icon-inline" size={14} /> Buscar
           </button>
         </Tooltip>
+        <Tooltip label="Diff entre DBML salvo e em memória">
+          <button
+            type="button"
+            className="toolbar__diff-btn"
+            aria-label="Diff DBML"
+            onClick={() => setDiffOpen((v) => !v)}
+          >
+            Diff
+          </button>
+        </Tooltip>
         <span className="sep" />
         <Tooltip label="Salvar (Cmd/Ctrl+S)">
           <button
@@ -1817,6 +1829,12 @@ const actions = useMemo<CanvasActions>(
         open={paletteOpen}
         commands={paletteCommands}
         onClose={() => setPaletteOpen(false)}
+      />
+      <DbmlDiff
+        open={diffOpen}
+        saved={baselineRef.current?.dbml ?? ''}
+        working={dbml}
+        onClose={() => setDiffOpen(false)}
       />
       <ShortcutsOverlay
         open={helpOpen}
