@@ -786,6 +786,11 @@ body {
   font-size: var(--fs-xs);
   padding: 4px;
   cursor: pointer;
+  /* v15-03: flex-shrink:0 garante que o botão não seja comprimido quando a área
+     de colunas (flex:1) consome mais espaço que o conteúdo (no Windows a
+     barra de scroll permanente ~17px força esse cenário). Sem isso, o "+coluna"
+     sobe para o meio do nó e sobra espaço em branco abaixo. */
+  flex: 0 0 auto;
 }
 .col-add:hover {
   background: #e6edf7;

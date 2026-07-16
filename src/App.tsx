@@ -422,6 +422,14 @@ export default function App() {
     return () => clearTimeout(id);
   }, [autoSave, saveState, handleSave]);
 
+  // Após "Salvo ✓" (2s), volta para "Salvar" ocioso — evita o botão "Salvar"
+  // ficar fixo após salvar sem nova edição.
+  useEffect(() => {
+    if (saveState !== 'saved') return;
+    const id = setTimeout(() => setSaveState('idle'), 2000);
+    return () => clearTimeout(id);
+  }, [saveState]);
+
   // Parse imediato (validação, editor). Canvas usa parse adiado abaixo.
   const parsed = useMemo(() => parseDbml(dbml), [dbml]);
   const dbmlBlocks = useMemo(() => splitDbmlBlocks(dbml), [dbml]);
@@ -1568,11 +1576,14 @@ const actions = useMemo<CanvasActions>(
         <span className="sep" />
         <Tooltip label="Salvar (Cmd/Ctrl+S)">
           <button
-            className="btn-save"
+            className={`btn-save btn-save--${saveState}`}
             onClick={() => handleSave()}
             disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'idle'}
           >
-            Salvar
+            {saveState === 'saving' ? 'Salvando…'
+              : saveState === 'saved' ? 'Salvo ✓'
+              : saveState === 'error' ? 'Erro'
+              : 'Salvar'}
           </button>
         </Tooltip>
         <span className="toolbar__autosave">
