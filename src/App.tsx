@@ -35,7 +35,7 @@ import { isCompleteTableId, setTableColor, setGroupColor } from './dsl/edit';
 import { classifyChildFks } from './dsl/rolename';
 import { propagateKeyRename, keepSeparateKeyRename } from './dsl/propagateKeyRename';
 import { RenameConfirmModal } from './editor/RenameConfirmModal';
-import { resolveTableId, tableAtLine } from './dsl/lineLocate';
+import { resolveTableId, tableAtLine, lineOfTable, lineOfColumn } from './dsl/lineLocate';
 import {
   shouldPanToTable,
   shouldSyncCursorLine,
@@ -731,15 +731,58 @@ export default function App() {
     [focusTable],
   );
 
+  /** Foca a tabela no canvas E também rola o editor DBML até a linha dela.
+   *  Usado pela palette (Cmd+K) para que o editor siga o foco do canvas. */
+  const focusTableInEditor = useCallback(
+    (tableId: string) => {
+      focusTableWithPan(tableId);
+      // Garante que o editor abre se estiver colapsado, e rola para a linha da tabela.
+      setEditorCollapsed(false);
+      const line = lineOfTable(dbml, tableId);
+      if (line == null) return;
+      let attempt = 0;
+      const tryGo = () => {
+        if (editorRef.current) {
+          editorRef.current.goToLine(line);
+          return;
+        }
+        if (++attempt < 8) requestAnimationFrame(tryGo);
+      };
+      requestAnimationFrame(tryGo);
+    },
+    [focusTableWithPan, dbml],
+  );
+
+  /** Scrolla o editor para a linha da coluna dentro da tabela. Robusto a
+   *  `editorRef` ainda não estar montado (Suspense do Editor): faz retry com
+   *  backoff curto até 8 frames (~130ms). */
+  const scrollEditorToColumn = useCallback(
+    (tableId: string, columnName: string) => {
+      setEditorCollapsed(false);
+      const line = lineOfColumn(dbml, tableId, columnName);
+      if (line == null) return;
+      let attempt = 0;
+      const tryGo = () => {
+        if (editorRef.current) {
+          editorRef.current.goToLine(line);
+          return;
+        }
+        if (++attempt < 8) requestAnimationFrame(tryGo);
+      };
+      requestAnimationFrame(tryGo);
+    },
+    [dbml],
+  );
+
   const focusColumn = useCallback(
     (tableId: string, columnName: string) => {
       focusTableWithPan(tableId);
       useInteraction.getState().selectColumn({ table: tableId, column: columnName });
       // Garante que o editor DBML também scrolla para a linha da coluna,
       // não só seleciona no canvas. (Fix: Cmd+K no outline não ia para a coluna.)
-      goToColumn(tableId, columnName);
+      scrollEditorToColumn(tableId, columnName);
     },
-    [focusTableWithPan, goToColumn],
+    [focusTableWithPan, scrollEditorToColumn],
   );
 
   const syncCanvasToEditorLine = useCallback(
@@ -1524,10 +1567,10 @@ const actions = useMemo<CanvasActions>(
           table.columns.map((field) => ({ tableId: table.id, columnName: field.name })),
         ),
         actions: paletteActions,
-        onFocusTable: focusTableWithPan,
+        onFocusTable: focusTableInEditor,
         onFocusColumn: focusColumn,
       }),
-    [activeModel.tables, focusTableWithPan, focusColumn, paletteActions],
+    [activeModel.tables, focusTableInEditor, focusColumn, paletteActions],
   );
 
   const isMac =
