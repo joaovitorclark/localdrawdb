@@ -1,66 +1,38 @@
-// Exporta o diagrama (viewport do React Flow) como PNG via html-to-image.
-import { toPng } from 'html-to-image';
-import { getNodesBounds, getViewportForBounds } from 'reactflow';
+// Exporta o diagrama como PNG.
+//
+// Usa uma bridge dentro do ReactFlowProvider (PngExportBridge em Canvas.tsx)
+// que tem acesso ao `useReactFlow`. A bridge reposiciona a viewport com
+// `setViewport` para enquadrar os nós-alvo, espera 2 frames para o ReactFlow
+// pintar o novo transform, captura com `toPng`, e restaura a viewport.
+//
+// Por que não aplicar CSS transform no .react-flow__viewport:
+// o viewport já tem o transform de pan/zoom do ReactFlow. Aplicar transform
+// adicional destrói o layout (conteúdo colapsa num canto). A solução oficial
+// do React Flow é usar `setViewport` + `toPng` — o que essa bridge faz.
 
-type Scope = 'full' | 'selection';
+export type PngScope = 'full' | 'selection';
 
-/** Captura o `.react-flow__viewport` e devolve um dataURL PNG. */
-export async function captureDiagramPng(scope: Scope = 'full'): Promise<string> {
-  const viewport = document.querySelector<HTMLElement>('.react-flow__viewport');
-  const wrapper = document.querySelector<HTMLElement>('.react-flow');
-  if (!viewport || !wrapper) throw new Error('Canvas não encontrado');
-
-  // Modo "selection": recorta para o bounding box das tabelas selecionadas.
-  if (scope === 'selection') {
-    const selectedNodes = Array.from(
-      document.querySelectorAll<HTMLElement>('.react-flow__node.selected'),
-    );
-    if (selectedNodes.length === 0) {
-      // Sem seleção: cai para o canvas inteiro para evitar PNG vazio.
-      return captureDiagramPng('full');
-    }
-    // Pega o React Flow instance do wrapper (data attribute). Para recorte,
-    // calculamos manualmente via DOM já que a lib expõe só via hook.
-    const bounds = measureDomBounds(selectedNodes);
-    const padding = 24;
-    const width = Math.ceil(bounds.width + padding * 2);
-    const height = Math.ceil(bounds.height + padding * 2);
-    return toPng(viewport, {
-      backgroundColor: '#ffffff',
-      pixelRatio: 2,
-      width,
-      height,
-      style: {
-        // Translada o viewport para alinhar o bounds no canto.
-        transform: `translate(${padding - bounds.left}px, ${padding - bounds.top}px)`,
-        transformOrigin: 'top left',
-      },
-    });
-  }
-
-  // Modo "full": captura tudo (incluindo tabelas fora do viewport visível).
-  return toPng(viewport, {
-    backgroundColor: '#ffffff',
-    pixelRatio: 2,
-    width: viewport.scrollWidth || undefined,
-    height: viewport.scrollHeight || undefined,
+/**
+ * Captura o canvas como PNG via bridge. Resolve com dataURL ou rejeita com erro.
+ * Retorna uma Promise<void> — a UI mostra feedback enquanto espera.
+ */
+export function captureDiagramPng(scope: PngScope = 'full'): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { dataUrl?: string; error?: string } | undefined;
+      window.removeEventListener('ldb:pngResult', handler);
+      if (detail?.error) reject(new Error(detail.error));
+      else if (detail?.dataUrl) resolve(detail.dataUrl);
+      else reject(new Error('PNG: resposta vazia da bridge'));
+    };
+    window.addEventListener('ldb:pngResult', handler, { once: true });
+    window.dispatchEvent(new CustomEvent('ldb:requestPng', { detail: { scope } }));
+    // Timeout de 15s para não ficar pendurado para sempre.
+    setTimeout(() => {
+      window.removeEventListener('ldb:pngResult', handler);
+      reject(new Error('PNG: timeout (15s)'));
+    }, 15000);
   });
-}
-
-/** Soma de getBoundingClientRect de múltiplos elementos (em coords de viewport). */
-function measureDomBounds(els: HTMLElement[]): { left: number; top: number; width: number; height: number } {
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  for (const el of els) {
-    const r = el.getBoundingClientRect();
-    if (r.left < minX) minX = r.left;
-    if (r.top < minY) minY = r.top;
-    if (r.right > maxX) maxX = r.right;
-    if (r.bottom > maxY) maxY = r.bottom;
-  }
-  return { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
 }
 
 /** Dispara o download do PNG no navegador. */
@@ -70,6 +42,3 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
   a.download = filename;
   a.click();
 }
-
-// Re-export do helper da reactflow para uso futuro.
-export { getNodesBounds, getViewportForBounds };

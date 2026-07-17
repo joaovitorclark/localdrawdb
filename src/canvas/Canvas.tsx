@@ -3,6 +3,7 @@ import ReactFlow, {
   Background, Controls, MiniMap, Panel, ConnectionMode, SelectionMode, useEdgesState, useNodesState, useReactFlow,
   type Connection, type Edge, type Node, type OnSelectionChangeParams,
 } from 'reactflow';
+import { getNodesBounds, getViewportForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { TableNode } from './TableNode';
 import { RelationEdge } from './RelationEdge';
@@ -210,6 +211,73 @@ function FocusFieldMappingHelper() {
       cancelled = true;
     };
   }, [focused, nonce, fitBounds, getNode]);
+  return null;
+}
+
+/**
+ * Bridge para o export PNG. Vive DENTRO do <ReactFlowProvider> para ter
+ * acesso ao `useReactFlow`. Recebe pedidos via window event; usa
+ * `setViewport` para enquadrar os nós-alvo, espera 2 frames, captura com
+ * `toPng`, e restaura a viewport.
+ *
+ * Por que setViewport + toPng (em vez de aplicar CSS transform):
+ * O `.react-flow__viewport` já tem o transform de pan/zoom do ReactFlow.
+ * Aplicar uma transform CSS adicional destrói o layout (conteúdo colapsa
+ * num canto — bug que o usuário viu no PNG). A solução oficial do React
+ * Flow é reposicionar a viewport via API, deixar o React Flow re-renderizar
+ * com o novo transform, e capturar.
+ */
+function PngExportBridge() {
+  const rf = useReactFlow();
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as { scope?: 'full' | 'selection' } | undefined;
+      const scope = detail?.scope ?? 'full';
+      const finish = (dataUrl?: string, error?: Error) => {
+        window.dispatchEvent(new CustomEvent('ldb:pngResult', {
+          detail: error ? { error: error.message } : { dataUrl },
+        }));
+      };
+      try {
+        const all = rf.getNodes();
+        const targetNodes = scope === 'selection'
+          ? all.filter((n) => n.selected)
+          : all;
+        if (!targetNodes.length) {
+          finish(undefined, new Error('Nenhuma tabela para exportar'));
+          return;
+        }
+        const before = rf.getViewport();
+        const { toPng } = await import('html-to-image');
+        const bounds = getNodesBounds(targetNodes);
+        const padding = 48;
+        const width = bounds.width + padding * 2;
+        const height = bounds.height + padding * 2;
+        const vp = getViewportForBounds(bounds, width, height, 0.5, 2, padding);
+        rf.setViewport(vp, { duration: 0 });
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        const viewport = document.querySelector<HTMLElement>('.react-flow__viewport');
+        if (!viewport) {
+          rf.setViewport(before, { duration: 0 });
+          finish(undefined, new Error('Canvas não encontrado'));
+          return;
+        }
+        const dataUrl = await toPng(viewport, {
+          backgroundColor: '#ffffff',
+          pixelRatio: 2,
+          width,
+          height,
+          cacheBust: true,
+        });
+        rf.setViewport(before, { duration: 0 });
+        finish(dataUrl);
+      } catch (e) {
+        finish(undefined, e instanceof Error ? e : new Error(String(e)));
+      }
+    };
+    window.addEventListener('ldb:requestPng', handler);
+    return () => window.removeEventListener('ldb:requestPng', handler);
+  }, [rf]);
   return null;
 }
 
@@ -580,6 +648,7 @@ export function Canvas(props: Props) {
         <AutolayoutFitHelper trigger={fitViewTrigger} />
         <FocusTableHelper tableId={focusTableId} focusNonce={focusNonce} onDone={onFocusTableDone} />
         <FocusFieldMappingHelper />
+        <PngExportBridge />
         <Background />
         <Controls />
         {showMiniMap ? (
