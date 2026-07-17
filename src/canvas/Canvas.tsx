@@ -510,12 +510,10 @@ export function Canvas(props: Props) {
   }, [lineageMode, onRemoveRef, onCreateRef]);
 
   const tableCount = parsed.tables.length;
-  // v15-05: minimap sempre presente com toggle visível. Em modelos muito
-  // grandes (>MINIMAP_MAX_TABLES) renderiza um modo lite (sem cor por nó) por
-  // custo de pintura.
-  const [miniMapOpen, setMiniMapOpen] = useState(true);
+  // Minimap sempre presente. Em modelos muito grandes (>MINIMAP_MAX_TABLES)
+  // renderiza um modo lite (sem cor por nó) por custo de pintura.
   const miniMapLite = tableCount > MINIMAP_MAX_TABLES;
-  const showMiniMap = miniMapOpen;
+  const showMiniMap = true;
 
   return (
     <div className={`canvas-wrap${related?.size ? ' canvas-wrap--focus' : ''}`}>
@@ -581,16 +579,6 @@ export function Canvas(props: Props) {
         <FocusFieldMappingHelper />
         <Background />
         <Controls />
-        <Panel position="bottom-left" className="canvas-minimap-toggle">
-          <button
-            type="button"
-            className={`canvas-minimap-toggle__btn${miniMapOpen ? ' is-on' : ''}`}
-            title={miniMapOpen ? 'Ocultar minimapa' : 'Mostrar minimapa'}
-            onClick={() => setMiniMapOpen((v) => !v)}
-          >
-            {miniMapOpen ? 'Ocultar mapa' : 'Mostrar mapa'}
-          </button>
-        </Panel>
         {showMiniMap ? (
           <MiniMap
             pannable

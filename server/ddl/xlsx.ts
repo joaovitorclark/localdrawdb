@@ -17,7 +17,6 @@ const HEADERS = [
   'coluna',
   'tipo',
   'pk',
-  'not_null',
   'nullable',
   'default',
   'fk_target',
@@ -84,7 +83,6 @@ function rowFor(table: Table, column: string, refs: Ref[]): (string | number)[] 
     col.name,
     col.args ? `${col.type}(${col.args})` : col.type,
     isPk ? 'PK' : '',
-    isNN ? 'NN' : '',
     isNN ? 'NO' : 'YES',
     '', // default — DBML não tem sintaxe explícita; fica em examples
     fkTarget(table, col.name, refs),
@@ -114,8 +112,7 @@ export function modelToDicionarioXlsx(model: Model): Buffer {
     { wch: 22 }, // coluna
     { wch: 14 }, // tipo
     { wch: 4 },  // pk
-    { wch: 4 },  // not_null
-    { wch: 8 },  // nullable
+    { wch: 10 }, // nullable
     { wch: 10 }, // default
     { wch: 28 }, // fk_target
     { wch: 40 }, // description

@@ -3,7 +3,6 @@ import type { ParseResult, TableView } from '../dsl/parse';
 import { tableLayerMap } from '../layers';
 import type { Positions } from './hooks/useCanvasNodes';
 import { nodeHeight, nodeWidth, type NodeMetricsOpts } from './nodeMetrics';
-import { detectFact, bfsLayers } from './factDetector';
 
 const MARGIN = 20;
 const MARGIN_WIDE = 16;
@@ -750,111 +749,5 @@ export function autolayoutPositions(parsed: ParseResult, compact = false): Posit
     offsetX = clusterMaxX + clusterGap;
   }
 
-  return positions;
-}
-
-/**
- * Layout estrela: identifica a tabela-fato (via `detectFact`) e a coloca
- * no centro; cada dimensão em sua própria camada concêntrica ao redor.
- * Esquema simples e legível para modelos onde a fato é clara.
- */
-export function autolayoutStarPositions(parsed: ParseResult): Positions {
-  const metrics = layoutMetrics(false);
-  const tables = parsed.tables;
-  if (!tables.length) return {};
-  const fact = detectFact(parsed);
-  if (!fact) return {};
-
-  const factTable = tables.find((t) => t.id === fact.id);
-  if (!factTable) return {};
-
-  const dims = tables.filter((t) => t.id !== factTable.id);
-  const factW = nodeWidth(factTable, metrics);
-  const factH = nodeHeight(factTable, metrics);
-
-  const positions: Positions = {};
-  // Fato no centro.
-  positions[factTable.id] = { x: 0, y: 0 };
-
-  // Disposição radial em camadas (uma única camada para star schema "puro").
-  // Ordena dimensões por nome para layout estável.
-  const sortedDims = [...dims].sort((a, b) => a.id.localeCompare(b.id));
-  const cx = factW / 2;
-  const cy = factH / 2;
-
-  // Calcula raio a partir da maior dimensão (folga visual).
-  const maxDimW = Math.max(...sortedDims.map((t) => nodeWidth(t, metrics)), 200);
-  const maxDimH = Math.max(...sortedDims.map((t) => nodeHeight(t, metrics)), 120);
-  const baseRadius = Math.max(factW, factH) / 2 + Math.max(maxDimW, maxDimH) / 2 + 80;
-
-  const n = sortedDims.length;
-  sortedDims.forEach((dim, i) => {
-    // Distribui uniformemente no círculo; usa offset para alternar
-    // alinhamento vertical/horizontal.
-    const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-    const dx = Math.cos(angle) * baseRadius;
-    const dy = Math.sin(angle) * baseRadius;
-    const w = nodeWidth(dim, metrics);
-    const h = nodeHeight(dim, metrics);
-    positions[dim.id] = {
-      x: Math.round(cx + dx - w / 2),
-      y: Math.round(cy + dy - h / 2),
-    };
-  });
-  return positions;
-}
-
-/**
- * Layout snowflake: tabela-fato no centro; BFS nas refs define "raios".
- * Cada camada é um anel concêntrico. Sem limite de profundidade.
- * Sub-dimensões (nível 2+) ficam em anéis mais externos.
- */
-export function autolayoutSnowflakePositions(parsed: ParseResult): Positions {
-  const metrics = layoutMetrics(false);
-  const tables = parsed.tables;
-  if (!tables.length) return {};
-  const fact = detectFact(parsed);
-  if (!fact) return {};
-
-  const factTable = tables.find((t) => t.id === fact.id);
-  if (!factTable) return {};
-
-  const refs = parsed.refs.map((r) => ({ source: r.source, target: r.target }));
-  const layerMap = bfsLayers(fact.id, tables, refs);
-  const maxLayer = Math.max(...layerMap.values());
-
-  const byLayer = new Map<number, TableView[]>();
-  for (const t of tables) {
-    const l = layerMap.get(t.id) ?? maxLayer;
-    byLayer.set(l, [...(byLayer.get(l) ?? []), t]);
-  }
-
-  const positions: Positions = {};
-  const factW = nodeWidth(factTable, metrics);
-  const factH = nodeHeight(factTable, metrics);
-  positions[factTable.id] = { x: 0, y: 0 };
-
-  const cx = factW / 2;
-  const cy = factH / 2;
-  const baseRadius = Math.max(factW, factH) / 2 + 160;
-
-  for (let l = 1; l <= maxLayer; l++) {
-    const ring = byLayer.get(l) ?? [];
-    if (!ring.length) continue;
-    const radius = baseRadius * l;
-    const sortedRing = [...ring].sort((a, b) => a.id.localeCompare(b.id));
-    const n = sortedRing.length;
-    sortedRing.forEach((t, i) => {
-      const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-      const dx = Math.cos(angle) * radius;
-      const dy = Math.sin(angle) * radius;
-      const w = nodeWidth(t, metrics);
-      const h = nodeHeight(t, metrics);
-      positions[t.id] = {
-        x: Math.round(cx + dx - w / 2),
-        y: Math.round(cy + dy - h / 2),
-      };
-    });
-  }
   return positions;
 }

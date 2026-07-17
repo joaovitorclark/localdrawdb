@@ -55,21 +55,22 @@ describe('modelToDicionarioXlsx', () => {
     const buf = modelToDicionarioXlsx(sampleModel());
     const wb = XLSX.read(buf, { type: 'buffer' });
     const rows = XLSX.utils.sheet_to_json<Record<string, string>>(wb.Sheets['Dicionário'], { header: 1 }) as unknown as string[][];
-    // linha 1 = orders.id (PK + NN)
-    expect(rows[1][4]).toBe('PK'); // pk
-    expect(rows[1][5]).toBe('NN'); // not_null
-    // linha 2 = orders.customer_id (NN, não PK, FK)
-    expect(rows[2][4]).toBe(''); // pk
-    expect(rows[2][5]).toBe('NN');
-    expect(rows[2][8]).toBe('customers.id'); // fk_target
+    // linha 1 = orders.id (PK + NOT NULL)
+    expect(rows[1][4]).toBe('PK');   // pk
+    expect(rows[1][5]).toBe('NO');   // nullable
+    // linha 2 = orders.customer_id (NOT NULL, não PK, FK)
+    expect(rows[2][4]).toBe('');     // pk
+    expect(rows[2][5]).toBe('NO');   // nullable
+    expect(rows[2][7]).toBe('customers.id'); // fk_target
   });
 
   it('serializa accepted_values como [A, B, C]', () => {
     const buf = modelToDicionarioXlsx(sampleModel());
     const wb = XLSX.read(buf, { type: 'buffer' });
     const rows = XLSX.utils.sheet_to_json<Record<string, string>>(wb.Sheets['Dicionário'], { header: 1 }) as unknown as string[][];
-    // linha 4 = orders.status
-    expect(rows[4][10]).toBe('[NEW, PAID, CANCELLED]');
+    // linha 4 = orders.status (nullable=YES, fk vazio, constraints)
+    expect(rows[4][5]).toBe('YES');
+    expect(rows[4][9]).toBe('[NEW, PAID, CANCELLED]');
   });
 
   it('lida com modelo vazio', () => {

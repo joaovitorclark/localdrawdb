@@ -5,7 +5,7 @@ import { METADATA_SNIPPET, newTableTemplate, parseDbml, findDuplicateTableId, fi
 import { validateModel } from './dsl/validateModel';
 import { splitDbmlBlocks } from './dsl/blocks';
 import { organize } from './dsl/organize';
-import { autolayoutLineagePositions, autolayoutPositions, autolayoutSnowflakePositions, autolayoutStarPositions } from './canvas/autolayout';
+import { autolayoutLineagePositions, autolayoutPositions } from './canvas/autolayout';
 import { defaultTablePosition } from './canvas/defaultTablePosition';
 import { ProblemsPanel } from './canvas/ProblemsPanel';
 import { StatusLog, type StatusLogEntry } from './canvas/StatusLog';
@@ -44,7 +44,6 @@ import {
 } from './editor/syncEditorCanvas';
 import { captureDiagramPng, downloadDataUrl } from './exportPng';
 import { ExportMenu } from './ExportMenu';
-import { OrganizeMenu } from './OrganizeMenu';
 import { DbmlDiff } from './components/DbmlDiff';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { Undo, Redo, Search } from './icons';
@@ -397,10 +396,14 @@ export default function App() {
     });
   }, [dbml, positions, colors, applySnapshot]);
 
-  // Marca dirty quando qualquer dado muda após o load.
+  // Marca dirty quando qualquer dado muda após o load — exceto durante a
+  // janela "saved" (deixar o reset para idle acontecer sem flip-flopping).
   useEffect(() => {
     if (!loadedRef.current) return;
-    setSaveState((s) => (s === 'idle' || s === 'saving' ? s : 'dirty'));
+    setSaveState((s) => {
+      if (s === 'idle' || s === 'saving' || s === 'saved') return s;
+      return 'dirty';
+    });
   }, [dbml, positions, sizes, colors, collapsedGroups, canvasPages, activePageIds]);
 
   const handleSave = useCallback((explicitDbml?: string) => {
@@ -425,11 +428,12 @@ export default function App() {
     return () => clearTimeout(id);
   }, [autoSave, saveState, handleSave]);
 
-  // Após "Salvo" (2s), volta para "Salvar" ocioso — evita o botão "Salvar"
-  // ficar fixo após salvar sem nova edição.
+  // Após "Salvo" (1.5s), volta para "Salvar" ocioso — evita o botão "Salvar"
+// ficar fixo após salvar sem nova edição. Mais curto que 2s para reduzir
+// o tempo em que o usuário vê o estado travado.
   useEffect(() => {
     if (saveState !== 'saved') return;
-    const id = setTimeout(() => setSaveState('idle'), 2000);
+    const id = setTimeout(() => setSaveState('idle'), 1500);
     return () => clearTimeout(id);
   }, [saveState]);
 
@@ -731,8 +735,11 @@ export default function App() {
     (tableId: string, columnName: string) => {
       focusTableWithPan(tableId);
       useInteraction.getState().selectColumn({ table: tableId, column: columnName });
+      // Garante que o editor DBML também scrolla para a linha da coluna,
+      // não só seleciona no canvas. (Fix: Cmd+K no outline não ia para a coluna.)
+      goToColumn(tableId, columnName);
     },
-    [focusTableWithPan],
+    [focusTableWithPan, goToColumn],
   );
 
   const syncCanvasToEditorLine = useCallback(
@@ -761,31 +768,22 @@ export default function App() {
     syncCanvasToEditorLine(editorCursorLineRef.current);
   }, [tableIdsKey, syncCanvasToEditorLine]);
 
-  const handleAutolayout = useCallback((variant?: 'star' | 'snowflake') => {
+  const handleAutolayout = useCallback(() => {
     const lineageMode = useInteraction.getState().lineageMode;
     const layoutModel = activePageIds.includes(ALL_PAGE_ID) ? canvasBaseModel : canvasActiveModel;
-    let base: Positions;
-    let label: string;
-    if (variant === 'star') {
-      base = autolayoutStarPositions(layoutModel);
-      label = 'Canvas reorganizado em star schema';
-    } else if (variant === 'snowflake') {
-      base = autolayoutSnowflakePositions(layoutModel);
-      label = 'Canvas reorganizado em snowflake schema';
-    } else {
-      base = lineageMode
-        ? autolayoutLineagePositions(layoutModel)
-        : autolayoutPositions(layoutModel, false);
-      label = lineageMode
-        ? `Canvas reorganizado para linhagem (${layoutModel.tables.length} tabelas)`
-        : canvasStubs.length
-          ? `Canvas reorganizado (${layoutModel.tables.length} tabelas, ${canvasStubs.length} grupo(s) externo(s) no topo)`
-          : `Canvas reorganizado (${layoutModel.tables.length} tabelas)`;
-    }
+    const base = lineageMode
+      ? autolayoutLineagePositions(layoutModel)
+      : autolayoutPositions(layoutModel, false);
     const next = canvasStubs.length ? layoutExternalStubsOnTop(base, canvasStubs) : base;
     setPositions(next);
     setFitViewTrigger((n) => n + 1);
-    pushStatus(label);
+    pushStatus(
+      lineageMode
+        ? `Canvas reorganizado para linhagem (${layoutModel.tables.length} tabelas)`
+        : canvasStubs.length
+          ? `Canvas reorganizado (${layoutModel.tables.length} tabelas, ${canvasStubs.length} grupo(s) externo(s) no topo)`
+          : `Canvas reorganizado (${layoutModel.tables.length} tabelas)`,
+    );
     setSaveState('dirty');
   }, [activePageIds, canvasBaseModel, canvasActiveModel, canvasStubs]);
 
@@ -1341,8 +1339,8 @@ const actions = useMemo<CanvasActions>(
   );
 
   const handleExportOption = (opt: api.ExportOption) => {
-    if (opt.id === 'png') {
-      handlePng();
+    if (opt.id === 'png-full' || opt.id === 'png-selection') {
+      handlePng(opt.id === 'png-selection' ? 'selection' : 'full');
       return;
     }
     run(`Exportando ${opt.label}`, async () => {
@@ -1360,12 +1358,15 @@ const actions = useMemo<CanvasActions>(
     });
   };
 
-  const handlePng = () =>
-    run('Exportando PNG', async () => {
-      const dataUrl = await captureDiagramPng();
-      downloadDataUrl(dataUrl, 'diagram.png');
+  const handlePng = (scope: 'full' | 'selection' = 'full') =>
+    run(scope === 'selection' ? 'Exportando PNG (recorte)' : 'Exportando PNG', async () => {
+      const dataUrl = await captureDiagramPng(scope);
+      const filename = scope === 'selection' ? 'diagram-selection.png' : 'diagram.png';
+      downloadDataUrl(dataUrl, filename);
       await api.exportPng(dataUrl).catch(() => {});
-      return 'PNG gerado (download + data/output/diagram.png)';
+      return scope === 'selection'
+        ? 'PNG do recorte gerado (download + data/output/diagram.png)'
+        : 'PNG do canvas inteiro gerado (download + data/output/diagram.png)';
     });
 
   const addTable = () => {
@@ -1425,21 +1426,9 @@ const actions = useMemo<CanvasActions>(
       },
       {
         id: 'action:organize-canvas',
-        label: 'Organizar canvas (padrão)',
+        label: 'Organizar canvas',
         keywords: ['autolayout', 'layout', 'cluster'],
         run: () => handleAutolayout(),
-      },
-      {
-        id: 'action:organize-canvas-star',
-        label: 'Organizar canvas (star)',
-        keywords: ['autolayout', 'layout', 'estrela', 'star', 'fato'],
-        run: () => handleAutolayout('star'),
-      },
-      {
-        id: 'action:organize-canvas-snowflake',
-        label: 'Organizar canvas (snowflake)',
-        keywords: ['autolayout', 'layout', 'snowflake'],
-        run: () => handleAutolayout('snowflake'),
       },
       ...api.EXPORT_OPTIONS.map((opt) => ({
         id: `action:export:${opt.id}`,
@@ -1578,8 +1567,8 @@ const actions = useMemo<CanvasActions>(
         <Tooltip label="Reordena: tabelas → refs → records">
           <button onClick={handleOrganize}>Organizar DBML</button>
         </Tooltip>
-        <Tooltip label="Reorganiza o canvas (padrão, estrela ou snowflake)">
-          <OrganizeMenu onPick={handleAutolayout} />
+        <Tooltip label="Reorganiza o canvas (padrão)">
+          <button onClick={() => handleAutolayout()}>Organizar canvas</button>
         </Tooltip>
         <button onClick={addTable}>+ Tabela</button>
         <Tooltip label="Insere o bloco de colunas de metadados padrão">
@@ -1588,7 +1577,11 @@ const actions = useMemo<CanvasActions>(
         <span className="sep" />
         <button onClick={handleImport}>Importar (input/)</button>
         <ExportMenu
-          options={[{ id: 'png', label: 'PNG do canvas', format: 'mermaid' }, ...api.EXPORT_OPTIONS]}
+          options={[
+            { id: 'png-full', label: 'PNG do canvas (inteiro)', format: 'mermaid' },
+            { id: 'png-selection', label: 'PNG do canvas (recorte da seleção)', format: 'mermaid' },
+            ...api.EXPORT_OPTIONS,
+          ]}
           onExport={handleExportOption}
         />
         <Tooltip label="Buscar comandos e tabelas (Cmd/Ctrl+K)">
