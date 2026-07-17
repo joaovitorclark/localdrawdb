@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
   Background, Controls, MiniMap, Panel, ConnectionMode, SelectionMode, useEdgesState, useNodesState, useReactFlow,
+  ReactFlowProvider,
   type Connection, type Edge, type Node, type OnSelectionChangeParams,
 } from 'reactflow';
-import { getNodesBounds, getViewportForBounds } from 'reactflow';
+import { getRectOfNodes, getTransformForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { TableNode } from './TableNode';
 import { RelationEdge } from './RelationEdge';
@@ -215,70 +216,166 @@ function FocusFieldMappingHelper() {
 }
 
 /**
- * Bridge para o export PNG. Vive DENTRO do <ReactFlowProvider> para ter
- * acesso ao `useReactFlow`. Recebe pedidos via window event; usa
- * `setViewport` para enquadrar os nós-alvo, espera 2 frames, captura com
- * `toPng`, e restaura a viewport.
+ * Bridge para o export PNG. Recebe pedidos via window event; popula o
+ * state `pendingNodes` com os nodes-alvo, espera o React Flow montar
+ * o offscreen, e captura com `toPng` usando a técnica canônica do
+ * React Flow (style.transform inline via getTransformForBounds).
  *
- * Por que setViewport + toPng (em vez de aplicar CSS transform):
- * O `.react-flow__viewport` já tem o transform de pan/zoom do ReactFlow.
- * Aplicar uma transform CSS adicional destrói o layout (conteúdo colapsa
- * num canto — bug que o usuário viu no PNG). A solução oficial do React
- * Flow é reposicionar a viewport via API, deixar o React Flow re-renderizar
- * com o novo transform, e capturar.
+ * Por que offscreen: o canvas principal usa `onlyRenderVisibleElements: true`,
+ * então nodes fora da viewport visível não estão no DOM. Capturar o
+ * viewport principal gera PNG vazio. Solução: wrapper offscreen dedicado
+ * com a flag desligada (mesmo nodeTypes do canvas principal).
  */
-function PngExportBridge() {
-  const rf = useReactFlow();
+function PngExportBridge({
+  onPending,
+}: {
+  onPending: (nodes: Node[] | null) => void;
+}) {
   useEffect(() => {
+    const finish = (dataUrl?: string, error?: Error) => {
+      window.dispatchEvent(new CustomEvent('ldb:pngResult', {
+        detail: error ? { error: error.message } : { dataUrl },
+      }));
+    };
     const handler = async (e: Event) => {
       const detail = (e as CustomEvent).detail as { scope?: 'full' | 'selection' } | undefined;
       const scope = detail?.scope ?? 'full';
-      const finish = (dataUrl?: string, error?: Error) => {
-        window.dispatchEvent(new CustomEvent('ldb:pngResult', {
-          detail: error ? { error: error.message } : { dataUrl },
-        }));
-      };
       try {
-        const all = rf.getNodes();
-        const targetNodes = scope === 'selection'
-          ? all.filter((n) => n.selected)
+        // `rf` não está acessível aqui (estamos fora do useEffect do componente),
+        // então pegamos os nodes via DOM. Para 'selection', filtramos pelo
+        // atributo data-selected do React Flow.
+        const all = Array.from(document.querySelectorAll<HTMLElement>('.react-flow__node'));
+        const target = scope === 'selection'
+          ? all.filter((el) => el.classList.contains('selected'))
           : all;
-        if (!targetNodes.length) {
+        if (!target.length) {
           finish(undefined, new Error('Nenhuma tabela para exportar'));
           return;
         }
-        const before = rf.getViewport();
-        const { toPng } = await import('html-to-image');
-        const bounds = getNodesBounds(targetNodes);
-        const padding = 48;
-        const width = bounds.width + padding * 2;
-        const height = bounds.height + padding * 2;
-        const vp = getViewportForBounds(bounds, width, height, 0.5, 2, padding);
-        rf.setViewport(vp, { duration: 0 });
-        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-        const viewport = document.querySelector<HTMLElement>('.react-flow__viewport');
-        if (!viewport) {
-          rf.setViewport(before, { duration: 0 });
-          finish(undefined, new Error('Canvas não encontrado'));
+        // Extrai posições DOM (getBoundingClientRect) e converte para formato Node.
+        const positions: Node[] = target.map((el, i) => {
+          const id = el.getAttribute('data-id') ?? `node-${i}`;
+          const r = el.getBoundingClientRect();
+          const wrap = el.parentElement; // .react-flow__viewport tem o transform
+          let x = 0;
+          let y = 0;
+          if (wrap) {
+            const wr = wrap.getBoundingClientRect();
+            x = r.left - wr.left;
+            y = r.top - wr.top;
+          }
+          return {
+            id,
+            type: el.getAttribute('data-rf-node-type') ?? 'table',
+            position: { x, y },
+            data: {},
+          } as Node;
+        });
+
+        onPending(positions);
+
+        // Espera o offscreen montar (3 frames + 200ms fallback).
+        await new Promise<void>((r) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => r()))));
+        await new Promise((r) => setTimeout(r, 200));
+
+        const offscreenViewport = document.querySelector<HTMLElement>(
+          '.png-export-offscreen .react-flow__viewport'
+        );
+        if (!offscreenViewport) {
+          onPending(null);
+          finish(undefined, new Error('Container offscreen não encontrado'));
           return;
         }
-        const dataUrl = await toPng(viewport, {
+
+        // getRectOfNodes + getTransformForBounds (técnica canônica do React Flow).
+        const bounds = getRectOfNodes(positions);
+        const padding = 48;
+        const width = Math.max(800, bounds.width + padding * 2);
+        const height = Math.max(400, bounds.height + padding * 2);
+        const transform = getTransformForBounds(bounds, width, height, 0.5, 2, padding);
+        const { toPng } = await import('html-to-image');
+        const dataUrl = await toPng(offscreenViewport, {
           backgroundColor: '#ffffff',
           pixelRatio: 2,
           width,
           height,
           cacheBust: true,
+          filter: (n) => {
+            const cls = (n as HTMLElement)?.classList;
+            if (!cls) return true;
+            return !cls.contains('react-flow__minimap') && !cls.contains('react-flow__controls');
+          },
+          style: {
+            width: `${width}px`,
+            height: `${height}px`,
+            transform: `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`,
+            transformOrigin: 'top left',
+          },
         });
-        rf.setViewport(before, { duration: 0 });
+        onPending(null);
         finish(dataUrl);
       } catch (e) {
+        onPending(null);
         finish(undefined, e instanceof Error ? e : new Error(String(e)));
       }
     };
     window.addEventListener('ldb:requestPng', handler);
     return () => window.removeEventListener('ldb:requestPng', handler);
-  }, [rf]);
+  }, [onPending]);
   return null;
+}
+
+/**
+ * Wrapper offscreen para o export PNG. Renderiza um React Flow com
+ * `onlyRenderVisibleElements: false` em posição fora-da-tela (top: -10000px).
+ * O PngExportBridge popula `pending` para forçar a renderização dos nodes
+ * mesmo que o canvas principal esteja com a otimização ligada.
+ *
+ * Importante: este componente DEVE estar dentro do mesmo ReactFlowProvider
+ * que o <ReactFlow> principal — caso contrário o useReactFlow da bridge
+ * não enxerga o contexto.
+ */
+function PngExportOffscreen({
+  pending,
+  nodeTypes,
+}: {
+  pending: Node[] | null;
+  nodeTypes: Record<string, React.ComponentType<any>>;
+}) {
+  if (!pending) return null;
+  return (
+    <div
+      className="png-export-offscreen"
+      aria-hidden
+      style={{
+        position: 'fixed',
+        top: -10000,
+        left: -10000,
+        width: 4000,
+        height: 4000,
+        pointerEvents: 'none',
+        opacity: 1,
+        zIndex: -1,
+      }}
+    >
+      <ReactFlow
+        nodes={pending}
+        edges={[]}
+        nodeTypes={nodeTypes}
+        onlyRenderVisibleElements={false}
+        proOptions={{ hideAttribution: true }}
+        fitView
+        minZoom={0.1}
+        maxZoom={4}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+      />
+    </div>
+  );
 }
 
 export function Canvas(props: Props) {
@@ -309,6 +406,8 @@ export function Canvas(props: Props) {
   /** L1 no canvas: só o toggle "Mostrar linhagem" (modo linhagem ≠ mostrar arestas). */
   const showLineageEdges = lineageVisible;
   const [connecting, setConnecting] = useState(false);
+  /** Nodes pendentes para renderizar no offscreen durante export PNG. */
+  const [pendingExportNodes, setPendingExportNodes] = useState<Node[] | null>(null);
 
   // Esc desseleciona coluna e seleção do canvas (fora de inputs — o editor de nome
   // de coluna trata o próprio Escape). Complementa o onPaneClick, que não mexe na coluna.
@@ -648,7 +747,6 @@ export function Canvas(props: Props) {
         <AutolayoutFitHelper trigger={fitViewTrigger} />
         <FocusTableHelper tableId={focusTableId} focusNonce={focusNonce} onDone={onFocusTableDone} />
         <FocusFieldMappingHelper />
-        <PngExportBridge />
         <Background />
         <Controls />
         {showMiniMap ? (
@@ -667,6 +765,8 @@ export function Canvas(props: Props) {
           />
         ) : null}
       </ReactFlow>
+      <PngExportBridge onPending={setPendingExportNodes} />
+      <PngExportOffscreen pending={pendingExportNodes} nodeTypes={nodeTypes} />
     </div>
   );
 }
