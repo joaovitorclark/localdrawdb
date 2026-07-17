@@ -1610,9 +1610,6 @@ const actions = useMemo<CanvasActions>(
         <Tooltip label="Reordena: tabelas → refs → records">
           <button onClick={handleOrganize}>Organizar DBML</button>
         </Tooltip>
-        <Tooltip label="Reorganiza o canvas (padrão)">
-          <button onClick={() => handleAutolayout()}>Organizar canvas</button>
-        </Tooltip>
         <button onClick={addTable}>+ Tabela</button>
         <Tooltip label="Insere o bloco de colunas de metadados padrão">
           <button onClick={addMetadata}>+ Metadados</button>
@@ -1778,6 +1775,7 @@ const actions = useMemo<CanvasActions>(
               focusTableId={focusTableId}
               focusNonce={focusNonce}
               onFocusTableDone={clearFocusTable}
+              onTableClick={focusTableInEditor}
               fitViewTrigger={fitViewTrigger}
               externalStubs={canvasStubs}
               crossRefs={canvasView.crossRefs}

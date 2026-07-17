@@ -2640,8 +2640,10 @@ body {
   position: fixed;
   inset: 0;
   z-index: 1700;
-  background: rgba(9, 14, 25, 0.45);
-  backdrop-filter: blur(2px);
+  /* v15-06: overlay mais escuro + blur maior para contraste forte contra
+     ambientes com muita luz. */
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -2650,25 +2652,35 @@ body {
 
 .command-palette {
   width: min(700px, 100%);
+  /* v15-06: fundo branco sólido (sem transparência), borda slate-600
+     (mais escura que slate-300) e sombra dupla para o modal destacar
+     nitidamente em ambientes claros. */
   background: #ffffff;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #475569;
   border-radius: 12px;
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.4);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.15);
   overflow: hidden;
 }
 
 .command-palette__input {
   width: 100%;
   border: none;
-  border-bottom: 1px solid #e2e8f0;
+  /* v15-06: separador mais escuro e fonte maior/peso 500 para legibilidade
+     em luz forte. */
+  border-bottom: 2px solid #1e293b;
   padding: 14px 16px;
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 500;
   color: #0f172a;
   outline: none;
+  background: #ffffff;
 }
 
 .command-palette__input::placeholder {
-  color: #94a3b8;
+  color: #64748b;
+  font-weight: 400;
 }
 
 .command-palette__list {
@@ -2682,13 +2694,13 @@ body {
 .command-palette__empty {
   padding: 10px 12px;
   font-size: 12px;
-  color: #64748b;
+  color: #475569;
 }
 
 .command-palette__item {
   width: 100%;
   border: none;
-  background: transparent;
+  background: #ffffff;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -2698,16 +2710,29 @@ body {
   color: #0f172a;
   cursor: pointer;
   text-align: left;
+  font-weight: 500;
 }
 
 .command-palette__item:hover,
 .command-palette__item.is-active {
-  background: #e8eefb;
+  /* v15-06: azul forte (#1e40af) com texto branco — selecionado fica
+     inconfundível em ambientes com muita luz. */
+  background: #1e40af;
+  color: #ffffff;
+}
+
+.command-palette__item.is-active .command-palette__kind,
+.command-palette__item.is-active .command-palette__shortcut,
+.command-palette__item.is-active .cp-table,
+.command-palette__item.is-active .cp-col,
+.command-palette__item.is-active .cp-dot,
+.command-palette__item.is-active .command-palette__meta {
+  color: #dbeafe;
 }
 
 .command-palette__label {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .cp-table {

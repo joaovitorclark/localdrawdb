@@ -110,6 +110,8 @@ type Props = {
   /** Incrementa para repetir foco na mesma tabela (ex.: posição recém-atribuída). */
   focusNonce?: number;
   onFocusTableDone?: () => void;
+  /** Clique numa tabela (não em coluna) → rola editor DBML + seleciona. */
+  onTableClick?: (tableId: string) => void;
   /** Incrementa após Organizar canvas para dar fitView. */
   fitViewTrigger?: number;
   /** Grupos fora da página (stub colapsado). */
@@ -214,7 +216,7 @@ function FocusFieldMappingHelper() {
 export function Canvas(props: Props) {
   const { parsed, nodeExtras, positions, sizes, onPositionsChange, onCreateRef, onRemoveRef, onRemoveTable, onRemoveTables,
     staleWarning, lineage, lineageFields, onCreateLineage, onRemoveLineage, onRemoveFieldLineage, onCreateFieldLineage,
-    layerOf, collapsedGroups, onToggleGroup, focusTableId, focusNonce, onFocusTableDone, fitViewTrigger,
+    layerOf, collapsedGroups, onToggleGroup, focusTableId, focusNonce, onFocusTableDone, onTableClick, fitViewTrigger,
     externalStubs = [], crossRefs = [] } = props;
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -557,6 +559,7 @@ export function Canvas(props: Props) {
         onNodeMouseLeave={() => setHovered(null)}
         onNodeClick={(_, n) => {
           if (n.type === 'group') selectGroup(n.id.replace(/^group:/, ''));
+          else if (n.type === 'table') onTableClick?.(n.id);
         }}
         // Clique/arrasto no pane NÃO desseleciona a coluna: o usuário pode arrastar o
         // canvas para seguir uma ligação. A coluna sai com Esc, outra coluna ou outra seleção.
