@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
   Background, Controls, MiniMap, Panel, ConnectionMode, SelectionMode, useEdgesState, useNodesState, useReactFlow,
-  ReactFlowProvider,
   type Connection, type Edge, type Node, type OnSelectionChangeParams,
 } from 'reactflow';
-import { getRectOfNodes, getTransformForBounds } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { TableNode } from './TableNode';
 import { RelationEdge } from './RelationEdge';
@@ -216,20 +214,21 @@ function FocusFieldMappingHelper() {
 }
 
 /**
- * Bridge para o export PNG. Recebe pedidos via window event; popula o
- * state `pendingNodes` com os nodes-alvo, espera o React Flow montar
- * o offscreen, e captura com `toPng` usando a técnica canônica do
- * React Flow (style.transform inline via getTransformForBounds).
- *
- * Por que offscreen: o canvas principal usa `onlyRenderVisibleElements: true`,
- * então nodes fora da viewport visível não estão no DOM. Capturar o
- * viewport principal gera PNG vazio. Solução: wrapper offscreen dedicado
- * com a flag desligada (mesmo nodeTypes do canvas principal).
+ /**
+ * Bridge para o export PNG. Renderiza um SVG puro a partir do snapshot
+ * atual do canvas (sem offscreen React Flow — bugs de visibility/
+ * stacking context que vimos nas 3 tentativas anteriores) e converte
+ * para PNG via Canvas API.
  */
 function PngExportBridge({
-  onPending,
+  getSnapshot,
 }: {
-  onPending: (nodes: Node[] | null) => void;
+  getSnapshot: () => {
+    parsed: import('../dsl/parse').ParseResult;
+    positions: Record<string, { x: number; y: number }>;
+    colors: Record<string, string>;
+    selectedIds: Set<string>;
+  } | null;
 }) {
   useEffect(() => {
     const finish = (dataUrl?: string, error?: Error) => {
@@ -241,146 +240,43 @@ function PngExportBridge({
       const detail = (e as CustomEvent).detail as { scope?: 'full' | 'selection' } | undefined;
       const scope = detail?.scope ?? 'full';
       try {
-        // `rf` não está acessível aqui (estamos fora do useEffect do componente),
-        // então pegamos os nodes via DOM. Para 'selection', filtramos pelo
-        // atributo data-selected do React Flow.
-        const all = Array.from(document.querySelectorAll<HTMLElement>('.react-flow__node'));
-        const target = scope === 'selection'
-          ? all.filter((el) => el.classList.contains('selected'))
-          : all;
-        if (!target.length) {
+        const snap = getSnapshot();
+        if (!snap) {
+          finish(undefined, new Error('Canvas ainda não montado'));
+          return;
+        }
+        const tables = scope === 'full'
+          ? snap.parsed.tables
+          : snap.parsed.tables.filter((t) => snap.selectedIds.has(t.id));
+        if (!tables.length) {
           finish(undefined, new Error('Nenhuma tabela para exportar'));
           return;
         }
-        // Extrai posições DOM (getBoundingClientRect) e converte para formato Node.
-        const positions: Node[] = target.map((el, i) => {
-          const id = el.getAttribute('data-id') ?? `node-${i}`;
-          const r = el.getBoundingClientRect();
-          const wrap = el.parentElement; // .react-flow__viewport tem o transform
-          let x = 0;
-          let y = 0;
-          if (wrap) {
-            const wr = wrap.getBoundingClientRect();
-            x = r.left - wr.left;
-            y = r.top - wr.top;
-          }
-          return {
-            id,
-            type: el.getAttribute('data-rf-node-type') ?? 'table',
-            position: { x, y },
-            data: {},
-          } as Node;
+        const filtered: import('../dsl/parse').ParseResult = {
+          ...snap.parsed,
+          tables,
+        };
+        const positions = scope === 'full'
+          ? snap.positions
+          : Object.fromEntries(tables.map((t) => [t.id, snap.positions[t.id] ?? { x: 0, y: 0 }]));
+        const { renderDiagramSvg, svgToPngDataUrl } = await import('./exportDiagramSvg');
+        const { svg, width, height } = renderDiagramSvg({
+          parsed: filtered,
+          positions,
+          colors: snap.colors,
+          selectedIds: snap.selectedIds,
+          scope,
         });
-
-        onPending(positions);
-
-        // Espera o offscreen montar (3 frames + 200ms fallback).
-        await new Promise<void>((r) =>
-          requestAnimationFrame(() =>
-            requestAnimationFrame(() =>
-              requestAnimationFrame(() => r()))));
-        await new Promise((r) => setTimeout(r, 200));
-
-        const offscreenViewport = document.querySelector<HTMLElement>(
-          '.png-export-offscreen .react-flow__viewport'
-        );
-        if (!offscreenViewport) {
-          onPending(null);
-          finish(undefined, new Error('Container offscreen não encontrado'));
-          return;
-        }
-
-        // getRectOfNodes + getTransformForBounds (técnica canônica do React Flow).
-        const bounds = getRectOfNodes(positions);
-        const padding = 48;
-        const width = Math.max(800, bounds.width + padding * 2);
-        const height = Math.max(400, bounds.height + padding * 2);
-        const transform = getTransformForBounds(bounds, width, height, 0.5, 2, padding);
-        const { toPng } = await import('html-to-image');
-        const dataUrl = await toPng(offscreenViewport, {
-          backgroundColor: '#ffffff',
-          pixelRatio: 2,
-          width,
-          height,
-          cacheBust: true,
-          filter: (n) => {
-            const cls = (n as HTMLElement)?.classList;
-            if (!cls) return true;
-            return !cls.contains('react-flow__minimap') && !cls.contains('react-flow__controls');
-          },
-          style: {
-            width: `${width}px`,
-            height: `${height}px`,
-            transform: `translate(${transform[0]}px, ${transform[1]}px) scale(${transform[2]})`,
-            transformOrigin: 'top left',
-          },
-        });
-        onPending(null);
+        const dataUrl = await svgToPngDataUrl(svg, width, height, 2);
         finish(dataUrl);
       } catch (e) {
-        onPending(null);
         finish(undefined, e instanceof Error ? e : new Error(String(e)));
       }
     };
     window.addEventListener('ldb:requestPng', handler);
     return () => window.removeEventListener('ldb:requestPng', handler);
-  }, [onPending]);
+  }, [getSnapshot]);
   return null;
-}
-
-/**
- * Wrapper offscreen para o export PNG. Renderiza um React Flow com
- * `onlyRenderVisibleElements: false` em posição fora-da-tela (top: -10000px).
- * O PngExportBridge popula `pending` para forçar a renderização dos nodes
- * mesmo que o canvas principal esteja com a otimização ligada.
- *
- * Importante: este componente DEVE estar dentro do mesmo ReactFlowProvider
- * que o <ReactFlow> principal — caso contrário o useReactFlow da bridge
- * não enxerga o contexto.
- */
-function PngExportOffscreen({
-  pending,
-  nodeTypes,
-}: {
-  pending: Node[] | null;
-  nodeTypes: Record<string, React.ComponentType<any>>;
-}) {
-  if (!pending) return null;
-  return (
-    <div
-      className="png-export-offscreen"
-      aria-hidden
-      style={{
-        // v15-07: visibility:hidden + top:0 (em vez de top:-10000) evita
-        // scroll involuntário do body em alguns navegadores quando o
-        // position:fixed "empurra" o conteúdo para fora da viewport.
-        // html-to-image clona o DOM em svg/foreignObject independente,
-        // então a visibilidade não afeta a captura.
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        visibility: 'hidden',
-        pointerEvents: 'none',
-        zIndex: -1,
-        width: '100vw',
-        height: '100vh',
-      }}
-    >
-      <ReactFlow
-        nodes={pending}
-        edges={[]}
-        nodeTypes={nodeTypes}
-        onlyRenderVisibleElements={false}
-        proOptions={{ hideAttribution: true }}
-        fitView
-        minZoom={0.1}
-        maxZoom={4}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-      />
-    </div>
-  );
 }
 
 export function Canvas(props: Props) {
@@ -411,8 +307,6 @@ export function Canvas(props: Props) {
   /** L1 no canvas: só o toggle "Mostrar linhagem" (modo linhagem ≠ mostrar arestas). */
   const showLineageEdges = lineageVisible;
   const [connecting, setConnecting] = useState(false);
-  /** Nodes pendentes para renderizar no offscreen durante export PNG. */
-  const [pendingExportNodes, setPendingExportNodes] = useState<Node[] | null>(null);
 
   // Esc desseleciona coluna e seleção do canvas (fora de inputs — o editor de nome
   // de coluna trata o próprio Escape). Complementa o onPaneClick, que não mexe na coluna.
@@ -447,6 +341,20 @@ export function Canvas(props: Props) {
     () => aggregateCrossLinks(crossRefs, externalStubs),
     [crossRefs, externalStubs],
   );
+
+  // Snapshot para o export PNG — sempre aponta para o state atual.
+  const exportSnapshotRef = useRef<{
+    parsed: import('../dsl/parse').ParseResult;
+    positions: Record<string, { x: number; y: number }>;
+    colors: Record<string, string>;
+    selectedIds: Set<string>;
+  } | null>(null);
+  exportSnapshotRef.current = {
+    parsed,
+    positions,
+    colors: parsed.colors,
+    selectedIds: new Set(selectedTableIds),
+  };
 
   const related = useMemo(() => {
     if (!focusTables.length) return null;
@@ -770,8 +678,7 @@ export function Canvas(props: Props) {
           />
         ) : null}
       </ReactFlow>
-      <PngExportBridge onPending={setPendingExportNodes} />
-      <PngExportOffscreen pending={pendingExportNodes} nodeTypes={nodeTypes} />
+      <PngExportBridge getSnapshot={() => exportSnapshotRef.current} />
     </div>
   );
 }
