@@ -1644,18 +1644,20 @@ const actions = useMemo<CanvasActions>(
           </button>
         </Tooltip>
         <span className="sep" />
-        <Tooltip label="Salvar (Cmd/Ctrl+S)">
-          <button
-            className={`btn-save btn-save--${saveState}`}
-            onClick={() => handleSave()}
-            disabled={saveState === 'saving' || saveState === 'saved'}
-          >
-            {saveState === 'saving' ? 'Salvando…'
-              : saveState === 'saved' ? 'Salvo'
-              : saveState === 'error' ? 'Erro'
-              : 'Salvar'}
-          </button>
-        </Tooltip>
+        {saveState !== 'idle' && (
+          <Tooltip label="Salvar (Cmd/Ctrl+S)">
+            <button
+              className={`btn-save btn-save--${saveState}`}
+              onClick={() => handleSave()}
+              disabled={saveState === 'saving' || saveState === 'saved'}
+            >
+              {saveState === 'saving' ? 'Salvando…'
+                : saveState === 'saved' ? 'Salvo'
+                : saveState === 'error' ? 'Erro'
+                : 'Salvar'}
+            </button>
+          </Tooltip>
+        )}
         <span className="toolbar__autosave">
           <span className="toolbar__autosave-label">Auto-salvar</span>
           <Tooltip label={autoSave ? 'Auto-salvar ligado' : 'Auto-salvar desligado'}>
