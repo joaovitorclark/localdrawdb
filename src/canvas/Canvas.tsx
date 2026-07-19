@@ -351,14 +351,19 @@ function PngExportOffscreen({
       className="png-export-offscreen"
       aria-hidden
       style={{
+        // v15-07: visibility:hidden + top:0 (em vez de top:-10000) evita
+        // scroll involuntário do body em alguns navegadores quando o
+        // position:fixed "empurra" o conteúdo para fora da viewport.
+        // html-to-image clona o DOM em svg/foreignObject independente,
+        // então a visibilidade não afeta a captura.
         position: 'fixed',
-        top: -10000,
-        left: -10000,
-        width: 4000,
-        height: 4000,
+        top: 0,
+        left: 0,
+        visibility: 'hidden',
         pointerEvents: 'none',
-        opacity: 1,
         zIndex: -1,
+        width: '100vw',
+        height: '100vh',
       }}
     >
       <ReactFlow

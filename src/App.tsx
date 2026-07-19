@@ -1648,7 +1648,7 @@ const actions = useMemo<CanvasActions>(
           <button
             className={`btn-save btn-save--${saveState}`}
             onClick={() => handleSave()}
-            disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'idle'}
+            disabled={saveState === 'saving' || saveState === 'saved'}
           >
             {saveState === 'saving' ? 'Salvando…'
               : saveState === 'saved' ? 'Salvo'
