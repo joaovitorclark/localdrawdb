@@ -1786,14 +1786,14 @@ body {
   line-height: 1;
 }
 .problems-badge--error {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
+  background: #facc15;
+  border-color: #eab308;
+  color: #713f12;
 }
 .problems-badge--error:hover,
 .problems-badge--error.is-open {
-  background: #fee2e2;
-  border-color: #f87171;
+  background: #eab308;
+  border-color: #ca8a04;
 }
 .problems-badge--warn {
   background: #facc15;
