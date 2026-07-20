@@ -4,7 +4,6 @@ type CollapseStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
 const LEGACY_KEYS: Record<string, string | undefined> = {
   'ldb.panel.layers': 'localdrawdb.layersPanelCollapsed',
-  'ldb.panel.pages': 'localdrawdb.pagesPanelCollapsed',
 };
 
 function getStorage(storage?: CollapseStorage): CollapseStorage {
