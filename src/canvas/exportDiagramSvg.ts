@@ -94,20 +94,31 @@ function renderTable(table: TableView, x: number, y: number, w: number, color: s
   return cols;
 }
 
-function renderRef(ref: RefView, positions: Record<string, { x: number; y: number }>, widths: Record<string, number>, heights: Record<string, number>): string | null {
-  const sp = positions[ref.source];
-  const tp = positions[ref.target];
+function renderRef(
+  ref: RefView,
+  sourceTable: TableView,
+  targetTable: TableView,
+  positions: Record<string, { x: number; y: number }>,
+  widths: Record<string, number>,
+): string | null {
+  const sp = positions[sourceTable.id];
+  const tp = positions[targetTable.id];
   if (!sp || !tp) return null;
-  const sw = widths[ref.source] ?? 200;
-  const sh = heights[ref.source] ?? 100;
-  const tw = widths[ref.target] ?? 200;
+  const sw = widths[sourceTable.id] ?? 200;
+  // Calcula Y da coluna source e target dentro da tabela.
+  const sourceIdx = sourceTable.columns.findIndex((c) => c.name === ref.fromCol);
+  const targetIdx = targetTable.columns.findIndex((c) => c.name === ref.toCol);
+  const sourceRow = sourceIdx >= 0 ? sourceIdx : 0;
+  const targetRow = targetIdx >= 0 ? targetIdx : 0;
+  const ySource = sp.y + HEADER_H + sourceRow * ROW_H + ROW_H / 2;
+  const yTarget = tp.y + HEADER_H + targetRow * ROW_H + ROW_H / 2;
   // Origem: borda direita da tabela source, na linha da coluna source.
   const x1 = sp.x + sw;
-  const y1 = sp.y + HEADER_H + 12; // aproximado, sem lookup exato
-  // Destino: borda esquerda da tabela target.
+  const y1 = ySource;
+  // Destino: borda esquerda da tabela target, na linha da coluna target.
   const x2 = tp.x;
-  const y2 = tp.y + HEADER_H + 12;
-  // Curva suave tipo cubic-bezier.
+  const y2 = yTarget;
+  // Curva suave tipo cubic-bezier (igual ao React Flow).
   const dx = Math.max(40, (x2 - x1) / 2);
   return `<path d="M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}" stroke="#64748b" stroke-width="1.2" fill="none" marker-end="url(#arrow)" />`;
 }
@@ -152,10 +163,10 @@ export function renderDiagramSvg(input: ExportInput): SvgExport {
   const height = Math.ceil(maxY - minY + padding * 2);
 
   // Renderiza refs (apenas entre tabelas do scope).
-  const tableIds = new Set(tables.map((t) => t.id));
+  const tableMap = new Map(tables.map((t) => [t.id, t]));
   const refsSvg = parsed.refs
-    .filter((r) => tableIds.has(r.source) && tableIds.has(r.target))
-    .map((r) => renderRef(r, positions, widths, heights))
+    .filter((r) => tableMap.has(r.source) && tableMap.has(r.target))
+    .map((r) => renderRef(r, tableMap.get(r.source)!, tableMap.get(r.target)!, positions, widths))
     .filter((s): s is string => s !== null)
     .join('');
 

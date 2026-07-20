@@ -135,4 +135,40 @@ describe('renderDiagramSvg', () => {
     });
     expect(svg).toContain('fill="#ff0000"');
   });
+
+  it('edges saem da linha da coluna correta (não do meio da tabela)', () => {
+    // Modelo onde orders tem customer_id na 3ª linha (índice 2).
+    const model: ParseResult = {
+      ...sampleModel(),
+      tables: [
+        {
+          ...tv('sales.orders'),
+          columns: [
+            { name: 'id', type: 'bigint', pk: true, notNull: true },
+            { name: 'name', type: 'string', pk: false, notNull: false },
+            { name: 'customer_id', type: 'bigint', pk: false, notNull: false },
+          ],
+        },
+        tv('sales.customers'),
+        tv('sales.products'),
+      ],
+    };
+    const { svg } = renderDiagramSvg({
+      parsed: model,
+      positions: {
+        'sales.orders': { x: 0, y: 0 },
+        'sales.customers': { x: 300, y: 0 },
+        'sales.products': { x: 600, y: 0 },
+      },
+      scope: 'full',
+    });
+    // Y esperado para a coluna customer_id (índice 2):
+    // HEADER_H (26) + 2 * ROW_H (20) + ROW_H/2 (10) = 76.
+    // Antes do fix era 38 (HEADER + 12) — bug.
+    // Extrai todos os Y usados nos paths e confirma que 76 aparece
+    // (mas não 38 do bug original).
+    const yValues = [...svg.matchAll(/C [\d.]+ ([\d.]+)/g)].map((m) => Number(m[1]));
+    expect(yValues).toContain(76);
+    expect(yValues).not.toContain(38);
+  });
 });
