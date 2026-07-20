@@ -44,25 +44,36 @@ function ColumnRowContentImpl({
 }: ColumnRowProps) {
   const isSel = selectedColumn === c.name;
   // Seleção no pointerup com tolerância de distância: o d3-drag do React Flow
-  // suprime o evento `click` ao menor movimento do mouse (jitter comum no Windows),
-  // então não dá para depender de onClick para selecionar a coluna.
+  // suprime o evento `click` ao menor movimento do mouse (jitter comum no Windows).
+  // Tolerância maior (12px) cobre trackpads sensíveis sem perder intenção de drag.
   const downPos = useRef<{ x: number; y: number } | null>(null);
-  const isInteractiveChild = (target: EventTarget | null) =>
-    !!(target as HTMLElement | null)?.closest?.('.col-handle, .col-edit');
+  const isInteractiveChild = useCallback(
+    (target: EventTarget | null) =>
+      !!(target as HTMLElement | null)?.closest?.('.col-handle, .col-edit'),
+    [],
+  );
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      downPos.current = isInteractiveChild(e.target) ? null : { x: e.clientX, y: e.clientY };
+    },
+    [isInteractiveChild],
+  );
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const d = downPos.current;
+      downPos.current = null;
+      if (!d || isInteractiveChild(e.target)) return;
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12) return; // foi drag
+      e.stopPropagation();
+      onSelect(c.name, e.altKey);
+    },
+    [c.name, isInteractiveChild, onSelect],
+  );
   return (
     <div
       className={`col-row${scrollable ? ' col-row--scroll' : ''} ${c.pk ? 'is-pk' : ''} ${isSel ? 'is-selected' : ''}`}
-      onPointerDown={(e) => {
-        downPos.current = isInteractiveChild(e.target) ? null : { x: e.clientX, y: e.clientY };
-      }}
-      onPointerUp={(e) => {
-        const d = downPos.current;
-        downPos.current = null;
-        if (!d || isInteractiveChild(e.target)) return;
-        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return; // foi drag
-        e.stopPropagation();
-        onSelect(c.name, e.altKey);
-      }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
     >
       {!lineageMode && (
         <Handle type="target" position={Position.Left} id={`t:${c.name}`} className="col-handle nodrag nopan" />

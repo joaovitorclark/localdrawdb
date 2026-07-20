@@ -80,26 +80,54 @@ function applySettings(rest: string, s: ColSettings): string {
   return tokens.length ? `${typePart} [${tokens.join(', ')}]` : typePart;
 }
 
+/** Extrai os settings gerenciados de uma linha de campo (helper puro, sem regex fora). */
+function readFieldLineSettings(rest: string): ColSettings {
+  const bracket = /\[([^\]]*)\]\s*$/.exec(rest);
+  const inside = bracket?.[1] ?? '';
+  const toks = bracket ? bracket[1].split(',').map((x) => x.trim()) : [];
+  const result: ColSettings = {};
+  result.pk = toks.some((t) => /^(pk|primary key)$/i.test(t));
+  result.notNull = toks.some((t) => /^not null$/i.test(t));
+  result.note = /note\s*:\s*'([^']*)'/i.exec(inside)?.[1];
+  result.default = /default\s*:\s*([^,]+)/i.exec(inside)?.[1]?.trim();
+  const refM = /ref\s*:\s*>\s*([^\s,]+)/i.exec(inside);
+  if (refM) result.refTarget = refM[1];
+  return result;
+}
+
+/** Lê os settings gerenciados atuais de uma coluna a partir do texto do bloco da tabela. */
+function readSettingsFromBlock(blockText: string, column: string): ColSettings {
+  for (const line of blockText.split('\n')) {
+    if (!isFieldLine(line)) continue;
+    const f = parseFieldLine(line);
+    if (!f || f.name !== stripQuotes(column)) continue;
+    return readFieldLineSettings(f.rest);
+  }
+  return {};
+}
+
 /** Lê os settings gerenciados atuais de uma coluna (para popular o painel). */
 export function getColumnSettings(src: string, table: string, column: string): ColSettings {
-  const result: ColSettings = {};
+  let result: ColSettings = {};
   mutateTableBlock(src, table, (block) => {
-    for (const line of block.split('\n')) {
-      if (!isFieldLine(line)) continue;
-      const f = parseFieldLine(line);
-      if (!f || f.name !== stripQuotes(column)) continue;
-      const bracket = /\[([^\]]*)\]\s*$/.exec(f.rest);
-      const toks = bracket ? bracket[1].split(',').map((x) => x.trim()) : [];
-      result.pk = toks.some((t) => /^(pk|primary key)$/i.test(t));
-      result.notNull = toks.some((t) => /^not null$/i.test(t));
-      result.note = /note\s*:\s*'([^']*)'/i.exec(bracket?.[1] ?? '')?.[1];
-      result.default = /default\s*:\s*([^,]+)/i.exec(bracket?.[1] ?? '')?.[1]?.trim();
-      const refM = /ref\s*:\s*>\s*([^\s,]+)/i.exec(bracket?.[1] ?? '');
-      if (refM) result.refTarget = refM[1];
-    }
+    result = readSettingsFromBlock(block, column);
     return block;
   });
   return result;
+}
+
+/** Versão que recebe os blocos já parseados (evita re-split do DBML a cada chamada). */
+export function getColumnSettingsFromBlocks(
+  blocks: ReturnType<typeof splitDbmlBlocks>,
+  table: string,
+  column: string,
+): ColSettings {
+  for (const b of blocks) {
+    if (b.type === 'table' && tableMatches(b.name, table)) {
+      return readSettingsFromBlock(b.text, column);
+    }
+  }
+  return {};
 }
 
 export function setColumnSetting(
