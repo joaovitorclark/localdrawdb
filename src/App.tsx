@@ -17,7 +17,6 @@ import { RecordsPanel } from './records/RecordsPanel';
 import { ColumnPanel } from './canvas/ColumnPanel';
 import { CanvasActionsCtx, type CanvasActions, type TableMeta } from './canvas/actions';
 import { LayersPanel } from './canvas/LayersPanel';
-import { PagesPanel } from './canvas/PagesPanel';
 import { CanvasLeftDock } from './canvas/CanvasLeftDock';
 import { PageImportWizard } from './canvas/PageImportWizard';
 import { allTablesPage, aggregateCrossLinks, buildCanvasViewModel, defaultExternalStubPosition, isExternalStubNodeId, layoutExternalStubsOnTop, pagesFromTableGroups, stubsWithLinkCounts } from './canvas/pageFilter';
@@ -194,7 +193,6 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [diffOpen, setDiffOpen] = useState(false);
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(() => loadStoredFlag('localdrawdb.layersPanelCollapsed', false));
-  const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(() => loadStoredFlag('localdrawdb.pagesPanelCollapsed', false));
   const [recordsPanelOpen, setRecordsPanelOpen] = useState(true);
   const [problemsPanelOpen, setProblemsPanelOpen] = useState(false);
   const [focusTableId, setFocusTableId] = useState<string | null>(null);
@@ -258,14 +256,6 @@ export default function App() {
       /* ignore */
     }
   }, [layersPanelCollapsed]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('localdrawdb.pagesPanelCollapsed', pagesPanelCollapsed ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  }, [pagesPanelCollapsed]);
 
   // Carrega a lista de projetos e o projeto ativo na montagem (F2).
   useEffect(() => {
@@ -1508,12 +1498,6 @@ const actions = useMemo<CanvasActions>(
         run: () => setRecordsPanelOpen((value) => !value),
       },
       {
-        id: 'action:toggle-pages-panel',
-        label: pagesPanelCollapsed ? 'Abrir painel Páginas' : 'Fechar painel Páginas',
-        keywords: ['paginas', 'páginas', 'pages panel'],
-        run: () => setPagesPanelCollapsed((value) => !value),
-      },
-      {
         id: 'action:toggle-problems-panel',
         label: problemsPanelOpen ? 'Fechar painel Problemas' : 'Abrir painel Problemas',
         keywords: ['problemas', 'issues panel'],
@@ -1527,7 +1511,6 @@ const actions = useMemo<CanvasActions>(
       handleImport,
       handleOrganize,
       layersPanelCollapsed,
-      pagesPanelCollapsed,
       problemsPanelOpen,
       recordsPanelOpen,
       redo,
@@ -1753,15 +1736,6 @@ const actions = useMemo<CanvasActions>(
               crossRefs={canvasView.crossRefs}
             />
             <CanvasLeftDock>
-              <PagesPanel
-                pages={canvasPages}
-                activePageIds={activePageIds}
-                totalTables={activeModel.tables.length}
-                visibleTables={canvasActiveModel.tables.length}
-                onChangeActivePages={handleChangeActivePages}
-                collapsed={pagesPanelCollapsed}
-                onCollapsedChange={setPagesPanelCollapsed}
-              />
               <ColumnPanel
                 dbml={dbml}
                 tables={activeModel.tables}
@@ -1812,6 +1786,9 @@ const actions = useMemo<CanvasActions>(
               onAddLayer={actions.onAddLayer}
               onFocusTable={focusTableWithPan}
               onAutolayout={handleAutolayout}
+              pages={canvasPages}
+              activePageIds={activePageIds}
+              onChangeActivePages={handleChangeActivePages}
               collapsed={layersPanelCollapsed}
               onCollapsedChange={setLayersPanelCollapsed}
             />

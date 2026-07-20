@@ -243,15 +243,23 @@ export function Canvas(props: Props) {
   const showLineageEdges = lineageVisible;
   const [connecting, setConnecting] = useState(false);
 
-  // Esc desseleciona coluna e seleção do canvas (fora de inputs — o editor de nome
-  // de coluna trata o próprio Escape). Complementa o onPaneClick, que não mexe na coluna.
+  // Esc desseleciona em pilha: 1º só a coluna (tabela continua selecionada),
+  // 2º também a tabela. O editor de nome de coluna trata o próprio Escape.
+  // Complementa o onPaneClick, que não mexe na coluna.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      selectColumn(null);
-      clearCanvasSelection();
+      const s = useInteraction.getState();
+      if (s.selectedColumn) {
+        // 1º Escape: só coluna. selectColumn(null) preserva selectedTable/Ids
+        // (setados pelo último selectColumn({table, column})).
+        selectColumn(null);
+      } else {
+        // 2º Escape: desseleciona a tabela também.
+        clearCanvasSelection();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
