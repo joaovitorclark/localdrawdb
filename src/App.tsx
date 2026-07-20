@@ -1797,12 +1797,14 @@ const actions = useMemo<CanvasActions>(
             records={activeModel.records}
             tables={activeModel.tables}
             refs={activeModel.refs}
+            lineageFields={activeModel.lineageFields}
             dbml={dbml}
             onApply={(next) => {
               prevDbmlRef.current = next;
               setDbml(next);
               setSaveState('dirty');
             }}
+            onFocusTable={focusTableWithPan}
             open={recordsPanelOpen}
             onOpenChange={setRecordsPanelOpen}
           />
