@@ -213,71 +213,6 @@ function FocusFieldMappingHelper() {
   return null;
 }
 
-/**
- /**
- * Bridge para o export PNG. Renderiza um SVG puro a partir do snapshot
- * atual do canvas (sem offscreen React Flow — bugs de visibility/
- * stacking context que vimos nas 3 tentativas anteriores) e converte
- * para PNG via Canvas API.
- */
-function PngExportBridge({
-  getSnapshot,
-}: {
-  getSnapshot: () => {
-    parsed: import('../dsl/parse').ParseResult;
-    positions: Record<string, { x: number; y: number }>;
-    colors: Record<string, string>;
-    selectedIds: Set<string>;
-  } | null;
-}) {
-  useEffect(() => {
-    const finish = (dataUrl?: string, error?: Error) => {
-      window.dispatchEvent(new CustomEvent('ldb:pngResult', {
-        detail: error ? { error: error.message } : { dataUrl },
-      }));
-    };
-    const handler = async (e: Event) => {
-      const detail = (e as CustomEvent).detail as { scope?: 'full' | 'selection' } | undefined;
-      const scope = detail?.scope ?? 'full';
-      try {
-        const snap = getSnapshot();
-        if (!snap) {
-          finish(undefined, new Error('Canvas ainda não montado'));
-          return;
-        }
-        const tables = scope === 'full'
-          ? snap.parsed.tables
-          : snap.parsed.tables.filter((t) => snap.selectedIds.has(t.id));
-        if (!tables.length) {
-          finish(undefined, new Error('Nenhuma tabela para exportar'));
-          return;
-        }
-        const filtered: import('../dsl/parse').ParseResult = {
-          ...snap.parsed,
-          tables,
-        };
-        const positions = scope === 'full'
-          ? snap.positions
-          : Object.fromEntries(tables.map((t) => [t.id, snap.positions[t.id] ?? { x: 0, y: 0 }]));
-        const { renderDiagramSvg, svgToPngDataUrl } = await import('./exportDiagramSvg');
-        const { svg, width, height } = renderDiagramSvg({
-          parsed: filtered,
-          positions,
-          colors: snap.colors,
-          selectedIds: snap.selectedIds,
-          scope,
-        });
-        const dataUrl = await svgToPngDataUrl(svg, width, height, 2);
-        finish(dataUrl);
-      } catch (e) {
-        finish(undefined, e instanceof Error ? e : new Error(String(e)));
-      }
-    };
-    window.addEventListener('ldb:requestPng', handler);
-    return () => window.removeEventListener('ldb:requestPng', handler);
-  }, [getSnapshot]);
-  return null;
-}
 
 export function Canvas(props: Props) {
   const { parsed, nodeExtras, positions, sizes, onPositionsChange, onCreateRef, onRemoveRef, onRemoveTable, onRemoveTables,
@@ -341,20 +276,6 @@ export function Canvas(props: Props) {
     () => aggregateCrossLinks(crossRefs, externalStubs),
     [crossRefs, externalStubs],
   );
-
-  // Snapshot para o export PNG — sempre aponta para o state atual.
-  const exportSnapshotRef = useRef<{
-    parsed: import('../dsl/parse').ParseResult;
-    positions: Record<string, { x: number; y: number }>;
-    colors: Record<string, string>;
-    selectedIds: Set<string>;
-  } | null>(null);
-  exportSnapshotRef.current = {
-    parsed,
-    positions,
-    colors: parsed.colors,
-    selectedIds: new Set(selectedTableIds),
-  };
 
   const related = useMemo(() => {
     if (!focusTables.length) return null;
@@ -678,7 +599,6 @@ export function Canvas(props: Props) {
           />
         ) : null}
       </ReactFlow>
-      <PngExportBridge getSnapshot={() => exportSnapshotRef.current} />
     </div>
   );
 }

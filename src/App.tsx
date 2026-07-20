@@ -42,7 +42,6 @@ import {
   shouldSyncEditorTable,
   type FocusTableOptions,
 } from './editor/syncEditorCanvas';
-import { captureDiagramPng, downloadDataUrl } from './exportPng';
 import { ExportMenu } from './ExportMenu';
 import { DbmlDiff } from './components/DbmlDiff';
 import { ProjectSwitcher } from './ProjectSwitcher';
@@ -1382,10 +1381,6 @@ const actions = useMemo<CanvasActions>(
   );
 
   const handleExportOption = (opt: api.ExportOption) => {
-    if (opt.id === 'png-full' || opt.id === 'png-selection') {
-      handlePng(opt.id === 'png-selection' ? 'selection' : 'full');
-      return;
-    }
     run(`Exportando ${opt.label}`, async () => {
       const result = await api.exportFormat(dbml, opt.format, opt.dialect);
       const files = result.files.join(', ');
@@ -1400,17 +1395,6 @@ const actions = useMemo<CanvasActions>(
       return `Gerado: ${files}`;
     });
   };
-
-  const handlePng = (scope: 'full' | 'selection' = 'full') =>
-    run(scope === 'selection' ? 'Exportando PNG (recorte)' : 'Exportando PNG', async () => {
-      const dataUrl = await captureDiagramPng(scope);
-      const filename = scope === 'selection' ? 'diagram-selection.png' : 'diagram.png';
-      downloadDataUrl(dataUrl, filename);
-      await api.exportPng(dataUrl).catch(() => {});
-      return scope === 'selection'
-        ? 'PNG do recorte gerado (download + data/output/diagram.png)'
-        : 'PNG do canvas inteiro gerado (download + data/output/diagram.png)';
-    });
 
   const addTable = () => {
     const name = prompt('Nome da nova tabela (schema.tabela):', 'novo_schema.nova_tabela');
@@ -1480,12 +1464,6 @@ const actions = useMemo<CanvasActions>(
         run: () => handleExportOption(opt),
       })),
       {
-        id: 'action:export-png',
-        label: 'Export PNG',
-        keywords: ['exportar imagem', 'png'],
-        run: handlePng,
-      },
-      {
         id: 'action:import',
         label: 'Importar (input/)',
         keywords: ['importar', 'input'],
@@ -1548,7 +1526,6 @@ const actions = useMemo<CanvasActions>(
       handleExportOption,
       handleImport,
       handleOrganize,
-      handlePng,
       layersPanelCollapsed,
       pagesPanelCollapsed,
       problemsPanelOpen,
@@ -1617,11 +1594,7 @@ const actions = useMemo<CanvasActions>(
         <span className="sep" />
         <button onClick={handleImport}>Importar (input/)</button>
         <ExportMenu
-          options={[
-            { id: 'png-full', label: 'PNG do canvas (inteiro)', format: 'mermaid' },
-            { id: 'png-selection', label: 'PNG do canvas (recorte da seleção)', format: 'mermaid' },
-            ...api.EXPORT_OPTIONS,
-          ]}
+          options={[...api.EXPORT_OPTIONS]}
           onExport={handleExportOption}
         />
         <Tooltip label="Buscar comandos e tabelas (Cmd/Ctrl+K)">
