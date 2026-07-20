@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, memo, type ReactNode } from 'react';
-import { Handle, Position, useNodeId, useUpdateNodeInternals } from 'reactflow';
+import { Handle, Position, useNodeId, useUpdateNodeInternals, useReactFlow } from 'reactflow';
 import type { ColumnView } from '../dsl/parse';
 import {
   COLUMN_VIRTUAL_ROW_H,
@@ -10,8 +10,16 @@ import { useTableScrollStore } from './tableScrollStore';
 import { computeVirtualWindow } from './hooks/useVirtualWindow';
 import { Key } from '../icons';
 
-const VIEW_H = COLUMN_VIRTUAL_VIEW_ROWS * COLUMN_VIRTUAL_ROW_H;
+const VIEW_H_FALLBACK = COLUMN_VIRTUAL_VIEW_ROWS * COLUMN_VIRTUAL_ROW_H;
 const OVERSCAN = 5;
+
+// Alturas reservadas dentro do nó da tabela (para o .table-node__header,
+// .col-add e padding) — descontadas da altura do nó para obter o viewport
+// disponível das colunas.
+const NODE_HEADER_H = 34;
+const NODE_ADD_BTN_H = 30;
+const NODE_PADDING = 8;
+const VIEWPORT_MIN_H = 120;
 
 type ColumnRowProps = {
   column: ColumnView;
@@ -146,8 +154,11 @@ function scrollToColumnIndex(el: HTMLDivElement, index: number): void {
   if (index < 0) return;
   const rowTop = index * COLUMN_VIRTUAL_ROW_H;
   const rowBottom = rowTop + COLUMN_VIRTUAL_ROW_H;
+  // Usa a altura atual do container em vez da constante fixa — após resize,
+  // a viewport mudou e a posição de scroll precisa refletir isso.
+  const viewportH = el.clientHeight || VIEW_H_FALLBACK;
   if (rowTop < el.scrollTop) el.scrollTop = rowTop;
-  else if (rowBottom > el.scrollTop + VIEW_H) el.scrollTop = rowBottom - VIEW_H;
+  else if (rowBottom > el.scrollTop + viewportH) el.scrollTop = rowBottom - viewportH;
 }
 
 export type TableColumnListProps = {
@@ -183,8 +194,35 @@ export function TableColumnList(props: TableColumnListProps): ReactNode {
   const scrollRef = useRef<HTMLDivElement>(null);
   const nodeId = useNodeId();
   const updateNodeInternals = useUpdateNodeInternals();
+  const { getNode } = useReactFlow();
   const setScrollTop = useTableScrollStore((s) => s.setScrollTop);
   const [scrollTop, setScrollTopLocal] = useState(0);
+  // Altura observada do nó React Flow. Quando muda (resize do usuário),
+  // recalcula o viewport e a janela virtual.
+  const [nodeH, setNodeH] = useState<number | null>(null);
+
+  // Polling via rAF: alternativa leve ao ResizeObserver. `getNode(id).height`
+  // é atualizado pelo React Flow quando NodeResizeControl.onResizeEnd dispara,
+  // então o próximo frame já vê o novo valor. Comparação prev===h evita
+  // setStates redundantes em tabelas estáticas.
+  useEffect(() => {
+    if (!scrollable || !nodeId) return;
+    let raf = 0;
+    const tick = () => {
+      const n = getNode(nodeId);
+      const h = (n?.height as number | undefined) ?? null;
+      setNodeH((prev) => (prev === h ? prev : h));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [scrollable, nodeId, getNode]);
+
+  // Viewport dinâmico: usa a altura real do nó menos o header + botão + coluna.
+  // Enquanto o primeiro frame não foi observado, mantém o fallback (350px).
+  const viewportH = nodeH
+    ? Math.max(VIEWPORT_MIN_H, nodeH - NODE_HEADER_H - NODE_ADD_BTN_H - NODE_PADDING)
+    : VIEW_H_FALLBACK;
 
   const publishScroll = useCallback(
     (next: number) => {
@@ -248,7 +286,7 @@ export function TableColumnList(props: TableColumnListProps): ReactNode {
   const win = computeVirtualWindow({
     totalItems: columns.length,
     itemHeight: COLUMN_VIRTUAL_ROW_H,
-    viewportHeight: VIEW_H,
+    viewportHeight: viewportH,
     scrollTop,
     overscan: OVERSCAN,
   });
@@ -258,7 +296,7 @@ export function TableColumnList(props: TableColumnListProps): ReactNode {
     <div
       ref={scrollRef}
       className="table-node__cols table-node__cols--scroll"
-      style={{ maxHeight: VIEW_H }}
+      style={{ maxHeight: viewportH }}
       onScroll={(e) => {
         const top = e.currentTarget.scrollTop;
         setScrollTopLocal(top);
