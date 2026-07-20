@@ -566,9 +566,18 @@ export function Canvas(props: Props) {
         deleteKeyCode={['Delete', 'Backspace']}
         onNodeMouseEnter={(_, n) => { if (n.type === 'table') setHovered(n.id); }}
         onNodeMouseLeave={() => setHovered(null)}
-        onNodeClick={(_, n) => {
+        onNodeClick={(event, n) => {
           if (n.type === 'group') selectGroup(n.id.replace(/^group:/, ''));
-          else if (n.type === 'table') onTableClick?.(n.id);
+          else if (n.type === 'table') {
+            // Cliques originados em uma linha de coluna (.col-row) NÃO devem disparar
+            // onTableClick (pan/foco da tabela). O TableColumnList usa onPointerUp
+            // com stopPropagation, mas o d3-drag do React Flow escuta em DOM direto
+            // e dispara onNodeClick mesmo assim. Guard aqui evita pan espúrio ao
+            // selecionar coluna (regressão introduzida pelo DBML scroll-to-column).
+            const target = (event as React.MouseEvent).target as HTMLElement | null;
+            if (target?.closest?.('.col-row')) return;
+            onTableClick?.(n.id);
+          }
         }}
         // Clique/arrasto no pane NÃO desseleciona a coluna: o usuário pode arrastar o
         // canvas para seguir uma ligação. A coluna sai com Esc, outra coluna ou outra seleção.
