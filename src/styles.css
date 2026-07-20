@@ -1785,23 +1785,23 @@ body {
   font-size: var(--fs-sm);
   line-height: 1;
 }
-.problems-badge--error {
+.toolbar .problems-badge--error {
   background: #facc15;
   border-color: #eab308;
   color: #713f12;
 }
-.problems-badge--error:hover,
-.problems-badge--error.is-open {
+.toolbar .problems-badge--error:hover,
+.toolbar .problems-badge--error.is-open {
   background: #eab308;
   border-color: #ca8a04;
 }
-.problems-badge--warn {
+.toolbar .problems-badge--warn {
   background: #facc15;
   border-color: #eab308;
   color: #713f12;
 }
-.problems-badge--warn:hover,
-.problems-badge--warn.is-open {
+.toolbar .problems-badge--warn:hover,
+.toolbar .problems-badge--warn.is-open {
   background: #eab308;
   border-color: #ca8a04;
 }
