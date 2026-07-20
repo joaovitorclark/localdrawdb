@@ -92,14 +92,15 @@ export function ProjectSwitcher({
       >
         <Pin className="icon-inline project-switcher__pin" size={14} />
         <span className="project-switcher__name">{pinnedLabel}</span>
-        <Tooltip label="Novo projeto">
+        <Tooltip label="Renomear projeto">
           <button
             type="button"
-            className="project-switcher__action project-switcher__new-pinned"
-            aria-label="Novo projeto"
-            onClick={handleCreate}
+            className="project-switcher__action project-switcher__rename-pinned"
+            aria-label="Renomear projeto"
+            onClick={() => current && handleRename(current)}
+            disabled={!current}
           >
-            +
+            <Edit className="icon-inline" size={14} />
           </button>
         </Tooltip>
       </div>
@@ -184,10 +185,11 @@ export function ProjectSwitcher({
           <div className="project-switcher__footer">
             <button
               type="button"
-              className="project-switcher__new"
-              onClick={handleCreate}
+              className="project-switcher__rename"
+              onClick={() => current && handleRename(current)}
+              disabled={!current}
             >
-              + Novo projeto
+              <Edit className="icon-inline" size={14} /> Renomear projeto
             </button>
           </div>
         </div>

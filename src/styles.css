@@ -156,6 +156,80 @@ body {
   align-items: center;
   gap: 6px;
 }
+
+/* Diff DBML (PR4.6) */
+.dbml-diff {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  width: 540px;
+  max-width: calc(100vw - 24px);
+  max-height: 50vh;
+  z-index: 200;
+  background: #1a202c;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  font-family: monospace;
+  font-size: var(--fs-xs);
+}
+.dbml-diff__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2d3748;
+  color: #e2e8f0;
+}
+.dbml-diff__counts {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 4px;
+  font-size: var(--fs-xs);
+}
+.dbml-diff__add {
+  color: #16a34a;
+}
+.dbml-diff__del {
+  color: #ef4444;
+}
+.dbml-diff__close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #a0aec0;
+  cursor: pointer;
+}
+.dbml-diff__body {
+  margin: 0;
+  padding: 8px 0;
+  overflow: auto;
+  color: #cbd5e0;
+}
+.dbml-diff__line {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px;
+  white-space: pre;
+}
+.dbml-diff__line--add {
+  background: rgba(22, 163, 74, 0.18);
+  color: #bbf7d0;
+}
+.dbml-diff__line--del {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fecaca;
+}
+.dbml-diff__line--same {
+  color: #94a3b8;
+}
+.dbml-diff__sign {
+  width: 12px;
+  user-select: none;
+  flex-shrink: 0;
+}
 .sep {
   width: 1px;
   height: 22px;
@@ -469,12 +543,47 @@ body {
   border-bottom: 1px solid #2d3748;
   background: #1a202c;
   font-size: var(--fs-xs);
-  max-height: 200px;
-  overflow-y: auto;
+  /* v15-04: altura controlada por inline style (Outline.tsx) — drag do
+     handle inferior ajusta entre 80px e 60vh. max-height antigo (200px)
+     virou default inicial. */
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .outline-panel.is-collapsed {
-  max-height: none;
+  min-height: 0;
   overflow: visible;
+}
+.outline-panel__resize-handle {
+  flex: 0 0 4px;
+  cursor: ns-resize;
+  background: transparent;
+  border-top: 1px solid #2d3748;
+  position: relative;
+  user-select: none;
+}
+.outline-panel__resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 32px;
+  height: 2px;
+  transform: translate(-50%, -50%);
+  background: #4a5568;
+  border-radius: 1px;
+}
+.outline-panel__resize-handle:hover::after {
+  background: #a0aec0;
+}
+.outline-panel__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 4px;
+  overflow-y: auto;
 }
 .outline-panel__toggle {
   display: block;
@@ -486,11 +595,7 @@ body {
   padding: 4px 8px;
   cursor: pointer;
   font-size: var(--fs-xs);
-}
-.outline-panel__list {
-  list-style: none;
-  margin: 0;
-  padding: 0 4px 4px;
+  flex: 0 0 auto;
 }
 .outline-panel__item {
   padding: 2px 6px;
@@ -598,10 +703,11 @@ body {
 .table-resize-handle--corner {
   width: 14px !important;
   height: 14px !important;
-  right: -4px !important;
-  bottom: -4px !important;
+  right: -10px !important;
+  bottom: -10px !important;
   border-radius: 3px;
   cursor: nwse-resize;
+  pointer-events: auto;
 }
 .table-node-shell:hover .table-resize-handle--corner {
   background: rgba(22, 163, 74, 0.35) !important;
@@ -629,6 +735,10 @@ body {
 }
 .table-node__title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .table-node__schema {
   opacity: 0.8;
@@ -743,6 +853,7 @@ body {
   padding: 3px 10px;
   border-top: 1px solid #eef1f5;
   cursor: pointer;
+  min-height: 25px; /* padroniza hit area com .col-row--scroll */
 }
 .col-row:hover {
   background: #f3f6fa;
@@ -786,6 +897,11 @@ body {
   font-size: var(--fs-xs);
   padding: 4px;
   cursor: pointer;
+  /* v15-03: flex-shrink:0 garante que o botão não seja comprimido quando a área
+     de colunas (flex:1) consome mais espaço que o conteúdo (no Windows a
+     barra de scroll permanente ~17px força esse cenário). Sem isso, o "+coluna"
+     sobe para o meio do nó e sobra espaço em branco abaixo. */
+  flex: 0 0 auto;
 }
 .col-add:hover {
   background: #e6edf7;
@@ -1121,69 +1237,6 @@ body {
 }
 
 /* v13 — páginas do canvas */
-.pages-panel {
-  position: relative;
-  top: auto;
-  left: auto;
-  z-index: auto;
-  background: #fff;
-  border: 1px solid #c4ccd6;
-  border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
-  padding: 8px 10px;
-  font-size: var(--fs-sm);
-  color: #13284b;
-  width: 100%;
-  box-sizing: border-box;
-  max-width: none;
-}
-.pages-panel.is-collapsed {
-  width: auto;
-  align-self: flex-start;
-  padding: 4px;
-  border-radius: 999px;
-}
-.pages-panel__collapse {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: transparent;
-  font: inherit;
-  font-weight: 600;
-  color: #13284b;
-  cursor: pointer;
-  padding: 2px 0;
-}
-.pages-panel__collapse:hover {
-  color: #1a5fb4;
-}
-.pages-panel.is-collapsed .pages-panel__collapse {
-  display: inline-flex;
-  align-items: center;
-  width: auto;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: #f3f6fa;
-}
-.pages-panel__hint {
-  margin: 6px 0 8px;
-  font-size: var(--fs-xs);
-  color: #5a6578;
-  line-height: 1.35;
-}
-.pages-panel__row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 4px 0;
-  cursor: pointer;
-  font-size: var(--fs-sm);
-}
-.pages-panel__row input {
-  margin: 0;
-}
-
 .page-wizard__fieldset {
   border: 1px solid #d0d7e2;
   border-radius: 8px;
@@ -1205,16 +1258,6 @@ body {
 }
 .page-wizard__row input {
   margin: 0;
-}
-
-.pages-panel__select {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 6px 8px;
-  font-size: var(--fs-sm);
-  border: 1px solid #d0d7e2;
-  border-radius: 6px;
-  background: #fff;
 }
 
 .page-wizard__select {
@@ -1742,25 +1785,25 @@ body {
   font-size: var(--fs-sm);
   line-height: 1;
 }
-.problems-badge--error {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
+.toolbar .problems-badge--error {
+  background: #facc15;
+  border-color: #eab308;
+  color: #713f12;
 }
-.problems-badge--error:hover,
-.problems-badge--error.is-open {
-  background: #fee2e2;
-  border-color: #f87171;
+.toolbar .problems-badge--error:hover,
+.toolbar .problems-badge--error.is-open {
+  background: #eab308;
+  border-color: #ca8a04;
 }
-.problems-badge--warn {
-  background: #fffbeb;
-  border-color: #fde68a;
-  color: #a16207;
+.toolbar .problems-badge--warn {
+  background: #facc15;
+  border-color: #eab308;
+  color: #713f12;
 }
-.problems-badge--warn:hover,
-.problems-badge--warn.is-open {
-  background: #fef3c7;
-  border-color: #fbbf24;
+.toolbar .problems-badge--warn:hover,
+.toolbar .problems-badge--warn.is-open {
+  background: #eab308;
+  border-color: #ca8a04;
 }
 /* Popover ancorado ao badge (portal no body, acima do canvas) */
 .problems-pop {
@@ -2231,6 +2274,43 @@ body {
   background: #7c3aed;
   color: #fff;
 }
+.records-constraints__tag--up {
+  background: #0e7490;
+  color: #fff;
+}
+.records-constraints__tag--down {
+  background: #475569;
+  color: #fff;
+}
+.records-constraints__tag--l2 {
+  background: #15803d;
+  color: #fff;
+}
+.records-constraints__link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--brand-navy);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.records-constraints__link:hover {
+  color: var(--brand-green);
+}
+.records-constraints__via {
+  color: #64748b;
+  font-size: var(--fs-xs);
+  margin-left: auto;
+  font-style: italic;
+}
+.records-constraints__row--l1,
+.records-constraints__row--l2 {
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .records-table__note {
   margin: 0 0 6px;
   padding: 6px 8px;
@@ -2530,8 +2610,10 @@ body {
   position: fixed;
   inset: 0;
   z-index: 1700;
-  background: rgba(9, 14, 25, 0.45);
-  backdrop-filter: blur(2px);
+  /* v15-06: overlay mais escuro + blur maior para contraste forte contra
+     ambientes com muita luz. */
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -2540,25 +2622,35 @@ body {
 
 .command-palette {
   width: min(700px, 100%);
+  /* v15-06: fundo branco sólido (sem transparência), borda slate-600
+     (mais escura que slate-300) e sombra dupla para o modal destacar
+     nitidamente em ambientes claros. */
   background: #ffffff;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #475569;
   border-radius: 12px;
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.4);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.30),
+    0 4px 12px rgba(0, 0, 0, 0.15);
   overflow: hidden;
 }
 
 .command-palette__input {
   width: 100%;
   border: none;
-  border-bottom: 1px solid #e2e8f0;
+  /* v15-06: separador mais escuro e fonte maior/peso 500 para legibilidade
+     em luz forte. */
+  border-bottom: 2px solid #1e293b;
   padding: 14px 16px;
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 500;
   color: #0f172a;
   outline: none;
+  background: #ffffff;
 }
 
 .command-palette__input::placeholder {
-  color: #94a3b8;
+  color: #64748b;
+  font-weight: 400;
 }
 
 .command-palette__list {
@@ -2572,13 +2664,13 @@ body {
 .command-palette__empty {
   padding: 10px 12px;
   font-size: 12px;
-  color: #64748b;
+  color: #475569;
 }
 
 .command-palette__item {
   width: 100%;
   border: none;
-  background: transparent;
+  background: #ffffff;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -2588,16 +2680,29 @@ body {
   color: #0f172a;
   cursor: pointer;
   text-align: left;
+  font-weight: 500;
 }
 
 .command-palette__item:hover,
 .command-palette__item.is-active {
-  background: #e8eefb;
+  /* v15-06: azul forte (#1e40af) com texto branco — selecionado fica
+     inconfundível em ambientes com muita luz. */
+  background: #1e40af;
+  color: #ffffff;
+}
+
+.command-palette__item.is-active .command-palette__kind,
+.command-palette__item.is-active .command-palette__shortcut,
+.command-palette__item.is-active .cp-table,
+.command-palette__item.is-active .cp-col,
+.command-palette__item.is-active .cp-dot,
+.command-palette__item.is-active .command-palette__meta {
+  color: #dbeafe;
 }
 
 .command-palette__label {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .cp-table {

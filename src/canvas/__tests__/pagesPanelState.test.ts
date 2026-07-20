@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parsePagesCollapsed } from '../PagesPanel';
+import { parsePagesCollapsed } from '../LayersPanel';
 
 describe('parsePagesCollapsed', () => {
   it('colapsado por default; respeita valor salvo', () => {

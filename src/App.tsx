@@ -17,7 +17,6 @@ import { RecordsPanel } from './records/RecordsPanel';
 import { ColumnPanel } from './canvas/ColumnPanel';
 import { CanvasActionsCtx, type CanvasActions, type TableMeta } from './canvas/actions';
 import { LayersPanel } from './canvas/LayersPanel';
-import { PagesPanel } from './canvas/PagesPanel';
 import { CanvasLeftDock } from './canvas/CanvasLeftDock';
 import { PageImportWizard } from './canvas/PageImportWizard';
 import { allTablesPage, aggregateCrossLinks, buildCanvasViewModel, defaultExternalStubPosition, isExternalStubNodeId, layoutExternalStubsOnTop, pagesFromTableGroups, stubsWithLinkCounts } from './canvas/pageFilter';
@@ -35,15 +34,15 @@ import { isCompleteTableId, setTableColor, setGroupColor } from './dsl/edit';
 import { classifyChildFks } from './dsl/rolename';
 import { propagateKeyRename, keepSeparateKeyRename } from './dsl/propagateKeyRename';
 import { RenameConfirmModal } from './editor/RenameConfirmModal';
-import { resolveTableId, tableAtLine } from './dsl/lineLocate';
+import { resolveTableId, tableAtLine, lineOfTable, lineOfColumn } from './dsl/lineLocate';
 import {
   shouldPanToTable,
   shouldSyncCursorLine,
   shouldSyncEditorTable,
   type FocusTableOptions,
 } from './editor/syncEditorCanvas';
-import { captureDiagramPng, downloadDataUrl } from './exportPng';
 import { ExportMenu } from './ExportMenu';
+import { DbmlDiff } from './components/DbmlDiff';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { Undo, Redo, Search } from './icons';
 import { Tooltip } from './Tooltip';
@@ -192,8 +191,8 @@ export default function App() {
   const [autoSave, setAutoSave] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(false);
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(() => loadStoredFlag('localdrawdb.layersPanelCollapsed', false));
-  const [pagesPanelCollapsed, setPagesPanelCollapsed] = useState(() => loadStoredFlag('localdrawdb.pagesPanelCollapsed', false));
   const [recordsPanelOpen, setRecordsPanelOpen] = useState(true);
   const [problemsPanelOpen, setProblemsPanelOpen] = useState(false);
   const [focusTableId, setFocusTableId] = useState<string | null>(null);
@@ -257,14 +256,6 @@ export default function App() {
       /* ignore */
     }
   }, [layersPanelCollapsed]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('localdrawdb.pagesPanelCollapsed', pagesPanelCollapsed ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
-  }, [pagesPanelCollapsed]);
 
   // Carrega a lista de projetos e o projeto ativo na montagem (F2).
   useEffect(() => {
@@ -394,10 +385,14 @@ export default function App() {
     });
   }, [dbml, positions, colors, applySnapshot]);
 
-  // Marca dirty quando qualquer dado muda após o load.
+  // Marca dirty quando qualquer dado muda após o load — exceto durante a
+  // janela "saved" (deixar o reset para idle acontecer sem flip-flopping).
   useEffect(() => {
     if (!loadedRef.current) return;
-    setSaveState((s) => (s === 'idle' || s === 'saving' ? s : 'dirty'));
+    setSaveState((s) => {
+      if (s === 'idle' || s === 'saving' || s === 'saved') return s;
+      return 'dirty';
+    });
   }, [dbml, positions, sizes, colors, collapsedGroups, canvasPages, activePageIds]);
 
   const handleSave = useCallback((explicitDbml?: string) => {
@@ -421,6 +416,15 @@ export default function App() {
     const id = setTimeout(handleSave, 1500);
     return () => clearTimeout(id);
   }, [autoSave, saveState, handleSave]);
+
+  // Após "Salvo" (1.5s), volta para "Salvar" ocioso — evita o botão "Salvar"
+// ficar fixo após salvar sem nova edição. Mais curto que 2s para reduzir
+// o tempo em que o usuário vê o estado travado.
+  useEffect(() => {
+    if (saveState !== 'saved') return;
+    const id = setTimeout(() => setSaveState('idle'), 1500);
+    return () => clearTimeout(id);
+  }, [saveState]);
 
   // Parse imediato (validação, editor). Canvas usa parse adiado abaixo.
   const parsed = useMemo(() => parseDbml(dbml), [dbml]);
@@ -716,12 +720,58 @@ export default function App() {
     [focusTable],
   );
 
+  /** Foca a tabela no canvas E também rola o editor DBML até a linha dela.
+   *  Usado pela palette (Cmd+K) para que o editor siga o foco do canvas. */
+  const focusTableInEditor = useCallback(
+    (tableId: string) => {
+      focusTableWithPan(tableId);
+      // Garante que o editor abre se estiver colapsado, e rola para a linha da tabela.
+      setEditorCollapsed(false);
+      const line = lineOfTable(dbml, tableId);
+      if (line == null) return;
+      let attempt = 0;
+      const tryGo = () => {
+        if (editorRef.current) {
+          editorRef.current.goToLine(line);
+          return;
+        }
+        if (++attempt < 8) requestAnimationFrame(tryGo);
+      };
+      requestAnimationFrame(tryGo);
+    },
+    [focusTableWithPan, dbml],
+  );
+
+  /** Scrolla o editor para a linha da coluna dentro da tabela. Robusto a
+   *  `editorRef` ainda não estar montado (Suspense do Editor): faz retry com
+   *  backoff curto até 8 frames (~130ms). */
+  const scrollEditorToColumn = useCallback(
+    (tableId: string, columnName: string) => {
+      setEditorCollapsed(false);
+      const line = lineOfColumn(dbml, tableId, columnName);
+      if (line == null) return;
+      let attempt = 0;
+      const tryGo = () => {
+        if (editorRef.current) {
+          editorRef.current.goToLine(line);
+          return;
+        }
+        if (++attempt < 8) requestAnimationFrame(tryGo);
+      };
+      requestAnimationFrame(tryGo);
+    },
+    [dbml],
+  );
+
   const focusColumn = useCallback(
     (tableId: string, columnName: string) => {
       focusTableWithPan(tableId);
       useInteraction.getState().selectColumn({ table: tableId, column: columnName });
+      // Garante que o editor DBML também scrolla para a linha da coluna,
+      // não só seleciona no canvas. (Fix: Cmd+K no outline não ia para a coluna.)
+      scrollEditorToColumn(tableId, columnName);
     },
-    [focusTableWithPan],
+    [focusTableWithPan, scrollEditorToColumn],
   );
 
   const syncCanvasToEditorLine = useCallback(
@@ -1321,10 +1371,6 @@ const actions = useMemo<CanvasActions>(
   );
 
   const handleExportOption = (opt: api.ExportOption) => {
-    if (opt.id === 'png') {
-      handlePng();
-      return;
-    }
     run(`Exportando ${opt.label}`, async () => {
       const result = await api.exportFormat(dbml, opt.format, opt.dialect);
       const files = result.files.join(', ');
@@ -1339,14 +1385,6 @@ const actions = useMemo<CanvasActions>(
       return `Gerado: ${files}`;
     });
   };
-
-  const handlePng = () =>
-    run('Exportando PNG', async () => {
-      const dataUrl = await captureDiagramPng();
-      downloadDataUrl(dataUrl, 'diagram.png');
-      await api.exportPng(dataUrl).catch(() => {});
-      return 'PNG gerado (download + data/output/diagram.png)';
-    });
 
   const addTable = () => {
     const name = prompt('Nome da nova tabela (schema.tabela):', 'novo_schema.nova_tabela');
@@ -1406,8 +1444,8 @@ const actions = useMemo<CanvasActions>(
       {
         id: 'action:organize-canvas',
         label: 'Organizar canvas',
-        keywords: ['autolayout', 'layout'],
-        run: handleAutolayout,
+        keywords: ['autolayout', 'layout', 'cluster'],
+        run: () => handleAutolayout(),
       },
       ...api.EXPORT_OPTIONS.map((opt) => ({
         id: `action:export:${opt.id}`,
@@ -1415,12 +1453,6 @@ const actions = useMemo<CanvasActions>(
         keywords: ['exportar', opt.format, opt.dialect ?? ''],
         run: () => handleExportOption(opt),
       })),
-      {
-        id: 'action:export-png',
-        label: 'Export PNG',
-        keywords: ['exportar imagem', 'png'],
-        run: handlePng,
-      },
       {
         id: 'action:import',
         label: 'Importar (input/)',
@@ -1466,12 +1498,6 @@ const actions = useMemo<CanvasActions>(
         run: () => setRecordsPanelOpen((value) => !value),
       },
       {
-        id: 'action:toggle-pages-panel',
-        label: pagesPanelCollapsed ? 'Abrir painel Páginas' : 'Fechar painel Páginas',
-        keywords: ['paginas', 'páginas', 'pages panel'],
-        run: () => setPagesPanelCollapsed((value) => !value),
-      },
-      {
         id: 'action:toggle-problems-panel',
         label: problemsPanelOpen ? 'Fechar painel Problemas' : 'Abrir painel Problemas',
         keywords: ['problemas', 'issues panel'],
@@ -1484,9 +1510,7 @@ const actions = useMemo<CanvasActions>(
       handleExportOption,
       handleImport,
       handleOrganize,
-      handlePng,
       layersPanelCollapsed,
-      pagesPanelCollapsed,
       problemsPanelOpen,
       recordsPanelOpen,
       redo,
@@ -1503,10 +1527,10 @@ const actions = useMemo<CanvasActions>(
           table.columns.map((field) => ({ tableId: table.id, columnName: field.name })),
         ),
         actions: paletteActions,
-        onFocusTable: focusTableWithPan,
+        onFocusTable: focusTableInEditor,
         onFocusColumn: focusColumn,
       }),
-    [activeModel.tables, focusTableWithPan, focusColumn, paletteActions],
+    [activeModel.tables, focusTableInEditor, focusColumn, paletteActions],
   );
 
   const isMac =
@@ -1544,7 +1568,7 @@ const actions = useMemo<CanvasActions>(
           </button>
         </Tooltip>
         <Tooltip label="Reordena: tabelas → refs → records">
-          <button onClick={handleOrganize}>Organizar</button>
+          <button onClick={handleOrganize}>Organizar DBML</button>
         </Tooltip>
         <button onClick={addTable}>+ Tabela</button>
         <Tooltip label="Insere o bloco de colunas de metadados padrão">
@@ -1553,7 +1577,7 @@ const actions = useMemo<CanvasActions>(
         <span className="sep" />
         <button onClick={handleImport}>Importar (input/)</button>
         <ExportMenu
-          options={[{ id: 'png', label: 'PNG do canvas', format: 'mermaid' }, ...api.EXPORT_OPTIONS]}
+          options={[...api.EXPORT_OPTIONS]}
           onExport={handleExportOption}
         />
         <Tooltip label="Buscar comandos e tabelas (Cmd/Ctrl+K)">
@@ -1565,16 +1589,28 @@ const actions = useMemo<CanvasActions>(
             <Search className="icon-inline" size={14} /> Buscar
           </button>
         </Tooltip>
-        <span className="sep" />
-        <Tooltip label="Salvar (Cmd/Ctrl+S)">
+        <Tooltip label="Diff entre DBML salvo e em memória">
           <button
-            className="btn-save"
-            onClick={() => handleSave()}
-            disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'idle'}
+            type="button"
+            className="toolbar__diff-btn"
+            aria-label="Diff DBML"
+            onClick={() => setDiffOpen((v) => !v)}
           >
-            Salvar
+            Diff
           </button>
         </Tooltip>
+        <span className="sep" />
+        <button
+          className={`btn-save btn-save--${saveState}`}
+          onClick={() => handleSave()}
+          disabled={saveState === 'saving' || saveState === 'saved'}
+          title="Salvar (Cmd/Ctrl+S)"
+        >
+          {saveState === 'saving' ? 'Salvando…'
+            : saveState === 'saved' ? 'Salvo'
+            : saveState === 'error' ? 'Erro'
+            : 'Salvar'}
+        </button>
         <span className="toolbar__autosave">
           <span className="toolbar__autosave-label">Auto-salvar</span>
           <Tooltip label={autoSave ? 'Auto-salvar ligado' : 'Auto-salvar desligado'}>
@@ -1694,20 +1730,12 @@ const actions = useMemo<CanvasActions>(
               focusTableId={focusTableId}
               focusNonce={focusNonce}
               onFocusTableDone={clearFocusTable}
+              onTableClick={focusTableInEditor}
               fitViewTrigger={fitViewTrigger}
               externalStubs={canvasStubs}
               crossRefs={canvasView.crossRefs}
             />
             <CanvasLeftDock>
-              <PagesPanel
-                pages={canvasPages}
-                activePageIds={activePageIds}
-                totalTables={activeModel.tables.length}
-                visibleTables={canvasActiveModel.tables.length}
-                onChangeActivePages={handleChangeActivePages}
-                collapsed={pagesPanelCollapsed}
-                onCollapsedChange={setPagesPanelCollapsed}
-              />
               <ColumnPanel
                 dbml={dbml}
                 tables={activeModel.tables}
@@ -1758,6 +1786,9 @@ const actions = useMemo<CanvasActions>(
               onAddLayer={actions.onAddLayer}
               onFocusTable={focusTableWithPan}
               onAutolayout={handleAutolayout}
+              pages={canvasPages}
+              activePageIds={activePageIds}
+              onChangeActivePages={handleChangeActivePages}
               collapsed={layersPanelCollapsed}
               onCollapsedChange={setLayersPanelCollapsed}
             />
@@ -1766,12 +1797,14 @@ const actions = useMemo<CanvasActions>(
             records={activeModel.records}
             tables={activeModel.tables}
             refs={activeModel.refs}
+            lineageFields={activeModel.lineageFields}
             dbml={dbml}
             onApply={(next) => {
               prevDbmlRef.current = next;
               setDbml(next);
               setSaveState('dirty');
             }}
+            onFocusTable={focusTableWithPan}
             open={recordsPanelOpen}
             onOpenChange={setRecordsPanelOpen}
           />
@@ -1781,6 +1814,12 @@ const actions = useMemo<CanvasActions>(
         open={paletteOpen}
         commands={paletteCommands}
         onClose={() => setPaletteOpen(false)}
+      />
+      <DbmlDiff
+        open={diffOpen}
+        saved={baselineRef.current?.dbml ?? ''}
+        working={dbml}
+        onClose={() => setDiffOpen(false)}
       />
       <ShortcutsOverlay
         open={helpOpen}

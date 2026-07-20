@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import type { Layer } from '../api';
+import type { CanvasPage, Layer } from '../api';
+import { ALL_PAGE_ID } from './scaleLimits';
 import { LAYER_PRESETS } from '../layers';
 import { useInteraction } from '../store/interaction';
 import { Chevron, Dot } from '../icons';
@@ -12,9 +13,19 @@ type Props = {
   onAddLayer: (n: string, c: string) => void;
   onFocusTable: (tableId: string) => void;
   onAutolayout?: () => void;
+  pages?: CanvasPage[];
+  activePageIds?: string[];
+  onChangeActivePages?: (ids: string[]) => void;
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
 };
+
+/** Núcleo puro de parse de flag de colapso (preservado para tests). */
+export function parsePagesCollapsed(raw: string | null): boolean {
+  if (raw === '1') return true;
+  if (raw === '0') return false;
+  return true;
+}
 
 export function LayersPanel({
   layers,
@@ -22,6 +33,9 @@ export function LayersPanel({
   onAddLayer,
   onFocusTable,
   onAutolayout,
+  pages,
+  activePageIds,
+  onChangeActivePages,
   collapsed: collapsedProp,
   onCollapsedChange,
 }: Props) {
@@ -54,6 +68,33 @@ export function LayersPanel({
     return sorted.filter((t) => t.id.toLowerCase().includes(q));
   }, [tables, tableQuery]);
 
+  // Páginas (v18-10): migrado do PagesPanel para dentro do LayersPanel para
+  // reduzir a densidade da toolbar lateral esquerda.
+  const selectablePages = useMemo(
+    () => (pages ? pages.filter((p) => p.id !== ALL_PAGE_ID) : []),
+    [pages],
+  );
+  const showAllPages = !!activePageIds?.includes(ALL_PAGE_ID);
+  const selectedPages = useMemo(
+    () => new Set(activePageIds ?? []),
+    [activePageIds],
+  );
+  const hasPagesSection = selectablePages.length > 0 && onChangeActivePages && activePageIds;
+  const toggleAllPages = (checked: boolean) => {
+    if (!onChangeActivePages) return;
+    onChangeActivePages(checked ? [ALL_PAGE_ID] : []);
+  };
+  const togglePage = (pageId: string, checked: boolean) => {
+    if (!onChangeActivePages || !activePageIds) return;
+    let next = activePageIds.filter((id) => id !== ALL_PAGE_ID);
+    if (checked) {
+      if (!next.includes(pageId)) next = [...next, pageId];
+    } else {
+      next = next.filter((id) => id !== pageId);
+    }
+    onChangeActivePages(next);
+  };
+
   return (
     <div className={`layers-panel ${collapsed ? 'is-collapsed' : ''}`}>
       <Tooltip label={collapsed ? 'Expandir painel' : 'Recolher painel'}>
@@ -68,6 +109,31 @@ export function LayersPanel({
       </Tooltip>
       {!collapsed && (
         <>
+          {hasPagesSection && (
+            <>
+              <div className="layers-panel__title">Páginas</div>
+              <label className="layers-panel__row">
+                <input
+                  type="checkbox"
+                  checked={showAllPages}
+                  onChange={(e) => toggleAllPages(e.target.checked)}
+                />
+                Todas
+              </label>
+              {selectablePages.map((p) => (
+                <label key={p.id} className="layers-panel__row">
+                  <input
+                    type="checkbox"
+                    checked={!showAllPages && selectedPages.has(p.id)}
+                    disabled={showAllPages}
+                    onChange={(e) => togglePage(p.id, e.target.checked)}
+                  />
+                  {p.name}
+                </label>
+              ))}
+              <div className="layers-panel__sep" />
+            </>
+          )}
           <div className="layers-panel__title">Camadas</div>
           {layers.map((l) => (
             <label key={l.id} className="layers-panel__row">

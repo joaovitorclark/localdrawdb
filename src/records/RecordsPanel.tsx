@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ParsedRecords } from '../dsl/records';
 import { getColumnSettings, setColumnSetting, setTableOrRecordsNote } from '../dsl/edit';
 import { useInteraction } from '../store/interaction';
-import type { RefView, TableView } from '../dsl/parse';
+import type { ParsedFieldLineage, RefView, TableView } from '../dsl/parse';
 import { Chevron } from '../icons';
 import { useCollapsePersist } from '../hooks/useCollapsePersist';
 
@@ -10,8 +10,10 @@ type Props = {
   records: ParsedRecords[];
   tables: TableView[];
   refs: RefView[];
+  lineageFields?: ParsedFieldLineage[];
   dbml: string;
   onApply: (next: string) => void;
+  onFocusTable?: (tableId: string) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 };
@@ -81,7 +83,7 @@ function NoteField({
   );
 }
 
-export function RecordsPanel({ records, tables, refs, dbml, onApply, open: openProp, onOpenChange }: Props) {
+export function RecordsPanel({ records, tables, refs, lineageFields, dbml, onApply, onFocusTable, open: openProp, onOpenChange }: Props) {
   // Persistência via hook unificado (v18-05); prop `open` permite controle externo (v18-07).
   const [collapsed, togglePersisted] = useCollapsePersist('ldb.panel.records', true);
   const open = openProp ?? !collapsed;
@@ -146,6 +148,31 @@ export function RecordsPanel({ records, tables, refs, dbml, onApply, open: openP
     return [];
   }, [selectedGroup, tables, filtered]);
 
+  // L1: origens da tabela (tabelas que alimentam esta via FK RefView).
+  // Uma tabela "fonte" para `effectiveTableId` é aquela cuja FK aponta para esta
+  // (source !== effectiveTableId && target === effectiveTableId), ou a própria
+  // tabela que serve como pai em self-refs. Mostra fontes upstream + downstream.
+  const l1Sources = useMemo(() => {
+    if (!effectiveTableId) return [] as { table: string; via: string; direction: 'up' | 'down' }[];
+    const out: { table: string; via: string; direction: 'up' | 'down' }[] = [];
+    for (const r of refs) {
+      const sourceIsThis = r.source === effectiveTableId;
+      const targetIsThis = r.target === effectiveTableId;
+      if (!sourceIsThis && !targetIsThis) continue;
+      const other = sourceIsThis ? r.target : r.source;
+      out.push({ table: other, via: r.fromCol, direction: sourceIsThis ? 'down' : 'up' });
+    }
+    return out;
+  }, [refs, effectiveTableId]);
+
+  // L2: origens do campo selecionado (ParsedFieldLineage.target = sel.table/col).
+  const l2Sources = useMemo(() => {
+    if (!selectedColumn || !lineageFields) return [] as ParsedFieldLineage[];
+    return lineageFields.filter(
+      (m) => m.targetTable === selectedColumn.table && m.targetColumn === selectedColumn.column,
+    );
+  }, [lineageFields, selectedColumn]);
+
   const panelCount = filtered.length + noteOnlyEntries.length + (effectiveTableId ? 1 : 0);
 
   if (!effectiveTableId && !selectedGroup) return null;
@@ -190,6 +217,56 @@ export function RecordsPanel({ records, tables, refs, dbml, onApply, open: openP
                   placeholder="Descrição da coluna…"
                   onChange={applyColumnNote}
                 />
+              )}
+              {l1Sources.length > 0 && (
+                <div className="records-constraints">
+                  <div className="records-constraints__title">Origem L1</div>
+                  {l1Sources.map((src, i) => (
+                    <div key={`l1:${i}`} className="records-constraints__row records-constraints__row--l1">
+                      <span className={`records-constraints__tag records-constraints__tag--${src.direction}`}>
+                        {src.direction === 'up' ? '↑' : '↓'}
+                      </span>
+                      {onFocusTable ? (
+                        <button
+                          type="button"
+                          className="records-constraints__link"
+                          onClick={() => onFocusTable(src.table)}
+                          title={`Ir para ${src.table}`}
+                        >
+                          {src.table}
+                        </button>
+                      ) : (
+                        src.table
+                      )}
+                      <span className="records-constraints__via">via {src.via}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {selectedColumn && l2Sources.length > 0 && (
+                <div className="records-constraints">
+                  <div className="records-constraints__title">Origem L2 (campo)</div>
+                  {l2Sources.map((m, i) => (
+                    <div key={`l2:${i}`} className="records-constraints__row records-constraints__row--l2">
+                      <span className="records-constraints__tag records-constraints__tag--l2">L2</span>
+                      {onFocusTable ? (
+                        <button
+                          type="button"
+                          className="records-constraints__link"
+                          onClick={() => onFocusTable(m.sourceTable)}
+                          title={`Ir para ${m.sourceTable}`}
+                        >
+                          {m.sourceTable}.{m.sourceColumn}
+                        </button>
+                      ) : (
+                        <span>
+                          {m.sourceTable}.{m.sourceColumn}
+                        </span>
+                      )}
+                      {m.note && <span className="records-constraints__via">— {m.note}</span>}
+                    </div>
+                  ))}
+                </div>
               )}
               {hasConstraints && (
                 <div className="records-constraints">

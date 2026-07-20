@@ -82,7 +82,9 @@ export type ExportFormat =
   | 'postgres-ddl'
   | 'erwin'
   | 'dbt'
-  | 'mermaid';
+  | 'mermaid'
+  | 'xlsx'
+  | 'llm-context';
 
 export type InputDialect = 'spark' | 'oracle' | 'auto';
 
@@ -102,6 +104,8 @@ export const EXPORT_OPTIONS: ExportOption[] = [
   { id: 'erwin', label: 'erwin (ANSI)', format: 'erwin' },
   { id: 'dbt', label: 'dbt', format: 'dbt' },
   { id: 'mermaid', label: 'Mermaid', format: 'mermaid' },
+  { id: 'xlsx', label: 'Dicionário de dados (XLSX)', format: 'xlsx' },
+  { id: 'llm-context', label: 'Contexto para LLM (Markdown+JSON)', format: 'llm-context' },
 ];
 
 async function post<T>(url: string, body: unknown): Promise<T> {

@@ -110,6 +110,8 @@ type Props = {
   /** Incrementa para repetir foco na mesma tabela (ex.: posição recém-atribuída). */
   focusNonce?: number;
   onFocusTableDone?: () => void;
+  /** Clique numa tabela (não em coluna) → rola editor DBML + seleciona. */
+  onTableClick?: (tableId: string) => void;
   /** Incrementa após Organizar canvas para dar fitView. */
   fitViewTrigger?: number;
   /** Grupos fora da página (stub colapsado). */
@@ -211,10 +213,11 @@ function FocusFieldMappingHelper() {
   return null;
 }
 
+
 export function Canvas(props: Props) {
   const { parsed, nodeExtras, positions, sizes, onPositionsChange, onCreateRef, onRemoveRef, onRemoveTable, onRemoveTables,
     staleWarning, lineage, lineageFields, onCreateLineage, onRemoveLineage, onRemoveFieldLineage, onCreateFieldLineage,
-    layerOf, collapsedGroups, onToggleGroup, focusTableId, focusNonce, onFocusTableDone, fitViewTrigger,
+    layerOf, collapsedGroups, onToggleGroup, focusTableId, focusNonce, onFocusTableDone, onTableClick, fitViewTrigger,
     externalStubs = [], crossRefs = [] } = props;
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -240,15 +243,23 @@ export function Canvas(props: Props) {
   const showLineageEdges = lineageVisible;
   const [connecting, setConnecting] = useState(false);
 
-  // Esc desseleciona coluna e seleção do canvas (fora de inputs — o editor de nome
-  // de coluna trata o próprio Escape). Complementa o onPaneClick, que não mexe na coluna.
+  // Esc desseleciona em pilha: 1º só a coluna (tabela continua selecionada),
+  // 2º também a tabela. O editor de nome de coluna trata o próprio Escape.
+  // Complementa o onPaneClick, que não mexe na coluna.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      selectColumn(null);
-      clearCanvasSelection();
+      const s = useInteraction.getState();
+      if (s.selectedColumn) {
+        // 1º Escape: só coluna. selectColumn(null) preserva selectedTable/Ids
+        // (setados pelo último selectColumn({table, column})).
+        selectColumn(null);
+      } else {
+        // 2º Escape: desseleciona a tabela também.
+        clearCanvasSelection();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -510,9 +521,10 @@ export function Canvas(props: Props) {
   }, [lineageMode, onRemoveRef, onCreateRef]);
 
   const tableCount = parsed.tables.length;
-  const [miniMapOpen, setMiniMapOpen] = useState(false);
+  // Minimap sempre presente. Em modelos muito grandes (>MINIMAP_MAX_TABLES)
+  // renderiza um modo lite (sem cor por nó) por custo de pintura.
   const miniMapLite = tableCount > MINIMAP_MAX_TABLES;
-  const showMiniMap = !miniMapLite || miniMapOpen;
+  const showMiniMap = true;
 
   return (
     <div className={`canvas-wrap${related?.size ? ' canvas-wrap--focus' : ''}`}>
@@ -554,8 +566,18 @@ export function Canvas(props: Props) {
         deleteKeyCode={['Delete', 'Backspace']}
         onNodeMouseEnter={(_, n) => { if (n.type === 'table') setHovered(n.id); }}
         onNodeMouseLeave={() => setHovered(null)}
-        onNodeClick={(_, n) => {
+        onNodeClick={(event, n) => {
           if (n.type === 'group') selectGroup(n.id.replace(/^group:/, ''));
+          else if (n.type === 'table') {
+            // Cliques originados em uma linha de coluna (.col-row) NÃO devem disparar
+            // onTableClick (pan/foco da tabela). O TableColumnList usa onPointerUp
+            // com stopPropagation, mas o d3-drag do React Flow escuta em DOM direto
+            // e dispara onNodeClick mesmo assim. Guard aqui evita pan espúrio ao
+            // selecionar coluna (regressão introduzida pelo DBML scroll-to-column).
+            const target = (event as React.MouseEvent).target as HTMLElement | null;
+            if (target?.closest?.('.col-row')) return;
+            onTableClick?.(n.id);
+          }
         }}
         // Clique/arrasto no pane NÃO desseleciona a coluna: o usuário pode arrastar o
         // canvas para seguir uma ligação. A coluna sai com Esc, outra coluna ou outra seleção.
@@ -578,18 +600,6 @@ export function Canvas(props: Props) {
         <FocusFieldMappingHelper />
         <Background />
         <Controls />
-        {miniMapLite ? (
-          <Panel position="bottom-left" className="canvas-minimap-toggle">
-            <button
-              type="button"
-              className={`canvas-minimap-toggle__btn${miniMapOpen ? ' is-on' : ''}`}
-              title={miniMapOpen ? 'Ocultar minimapa' : 'Mostrar minimapa (modo leve)'}
-              onClick={() => setMiniMapOpen((v) => !v)}
-            >
-              Mapa
-            </button>
-          </Panel>
-        ) : null}
         {showMiniMap ? (
           <MiniMap
             pannable

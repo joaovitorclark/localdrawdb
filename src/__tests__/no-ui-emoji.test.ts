@@ -10,7 +10,6 @@ const FILES = [
   'src/canvas/ProblemsPanel.tsx',
   'src/canvas/StatusLog.tsx',
   'src/canvas/LayersPanel.tsx',
-  'src/canvas/PagesPanel.tsx',
   'src/records/RecordsPanel.tsx',
   'src/canvas/GroupNode.tsx',
   'src/canvas/ColumnPanel.tsx',

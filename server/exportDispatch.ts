@@ -2,6 +2,8 @@
 import { modelToDbtFiles } from './dbtExport.ts';
 import { modelToErwinDDL } from './ddl/erwin.ts';
 import { modelToMermaid } from './ddl/mermaid.ts';
+import { modelToDicionarioXlsx } from './ddl/xlsx.ts';
+import { modelToLlmContext } from './ddl/llmContext.ts';
 import { oracleDDLBySchema } from './ddl/oracle.ts';
 import { postgresDDLBySchema } from './ddl/postgres.ts';
 import { sparkDDLBySchema } from './ddl/spark.ts';
@@ -16,7 +18,9 @@ export type ExportFormat =
   | 'postgres-ddl'
   | 'erwin'
   | 'dbt'
-  | 'mermaid';
+  | 'mermaid'
+  | 'xlsx'
+  | 'llm-context';
 
 export type ExportRequest = {
   format: ExportFormat;
@@ -65,6 +69,15 @@ export async function runExport(model: Model, req: ExportRequest): Promise<strin
     }
     case 'mermaid': {
       written.push(await writeOutput('mermaid/modelo.mmd', modelToMermaid(model)));
+      break;
+    }
+    case 'xlsx': {
+      const buf = modelToDicionarioXlsx(model);
+      written.push(await writeOutput('xlsx/dicionario.xlsx', buf));
+      break;
+    }
+    case 'llm-context': {
+      written.push(await writeOutput('llm/contexto.md', modelToLlmContext(model)));
       break;
     }
     default: {

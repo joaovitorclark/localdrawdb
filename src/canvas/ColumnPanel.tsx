@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useInteraction } from '../store/interaction';
-import { getColumnSettings, setColumnColor, setColumnSetting, type ColSettings } from '../dsl/edit';
+import { getColumnSettingsFromBlocks, setColumnColor, setColumnSetting, type ColSettings } from '../dsl/edit';
 import type { ParsedFieldLineage, TableView } from '../dsl/parse';
+import { splitDbmlBlocks } from '../dsl/blocks';
 import { ColumnMappings } from './ColumnMappings';
 import { Chevron, Close } from '../icons';
 import { Tooltip } from '../Tooltip';
@@ -59,9 +60,13 @@ export function ColumnPanel({
     [tables, sel],
   );
 
+  // Cache dos blocos do DBML: evita re-parsear o DBML inteiro a cada troca
+  // de coluna. Só revalida quando o src muda.
+  const blocks = useMemo(() => splitDbmlBlocks(dbml), [dbml]);
+
   const settings = useMemo(
-    () => (sel ? getColumnSettings(dbml, sel.table, sel.column) : null),
-    [dbml, sel],
+    () => (sel ? getColumnSettingsFromBlocks(blocks, sel.table, sel.column) : null),
+    [blocks, sel],
   );
 
   const refOptions = useMemo(() => {

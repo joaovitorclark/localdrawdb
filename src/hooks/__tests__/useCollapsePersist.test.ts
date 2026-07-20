@@ -65,15 +65,15 @@ describe('readCollapsedWithLegacy', () => {
   });
 
   it('usa chave legada quando a nova está ausente', () => {
-    const storage = createStorage({ 'localdrawdb.pagesPanelCollapsed': '1' });
+    const storage = createStorage({ 'localdrawdb.layersPanelCollapsed': '0' });
     expect(
       readCollapsedWithLegacy(
-        'ldb.panel.pages',
-        'localdrawdb.pagesPanelCollapsed',
-        false,
+        'ldb.panel.layers',
+        'localdrawdb.layersPanelCollapsed',
+        true,
         storage,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('retorna default quando ambas estão ausentes', () => {
