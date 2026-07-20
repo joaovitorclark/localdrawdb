@@ -703,10 +703,11 @@ body {
 .table-resize-handle--corner {
   width: 14px !important;
   height: 14px !important;
-  right: -4px !important;
-  bottom: -4px !important;
+  right: -10px !important;
+  bottom: -10px !important;
   border-radius: 3px;
   cursor: nwse-resize;
+  pointer-events: auto;
 }
 .table-node-shell:hover .table-resize-handle--corner {
   background: rgba(22, 163, 74, 0.35) !important;
@@ -734,6 +735,10 @@ body {
 }
 .table-node__title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .table-node__schema {
   opacity: 0.8;
@@ -848,6 +853,7 @@ body {
   padding: 3px 10px;
   border-top: 1px solid #eef1f5;
   cursor: pointer;
+  min-height: 25px; /* padroniza hit area com .col-row--scroll */
 }
 .col-row:hover {
   background: #f3f6fa;
@@ -1863,14 +1869,14 @@ body {
   border-color: #f87171;
 }
 .problems-badge--warn {
-  background: #fffbeb;
-  border-color: #fde68a;
-  color: #a16207;
+  background: #facc15;
+  border-color: #eab308;
+  color: #713f12;
 }
 .problems-badge--warn:hover,
 .problems-badge--warn.is-open {
-  background: #fef3c7;
-  border-color: #fbbf24;
+  background: #eab308;
+  border-color: #ca8a04;
 }
 /* Popover ancorado ao badge (portal no body, acima do canvas) */
 .problems-pop {
