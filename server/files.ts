@@ -1,19 +1,11 @@
 // Acesso ao diretório data/ (input, output, persistência). NUNCA versionado.
-// F0: camada multi-projeto — data/projects/<slug>/
+// Camada de projeto — data/domains/<slug>/projects/<slug>/
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { ROOT, DATA_DIR } from './paths.ts';
 
-// ──────────────────────────────────────────────────────────────
-// Raiz do repositório (sempre baseada no local do arquivo, não
-// sobrescrita pelo env — serve de âncora para ROOT).
-// ──────────────────────────────────────────────────────────────
-export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-// DATA_DIR público: pode ser sobrescrito via LOCALDRAWDB_DATA_DIR (usado em testes).
-// Em runtime o valor padrão é ROOT/data.
-export const DATA_DIR = path.join(ROOT, 'data');
+export { ROOT, DATA_DIR };
 
 /**
  * Retorna o diretório de dados efetivo.
