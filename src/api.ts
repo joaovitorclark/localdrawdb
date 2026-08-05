@@ -273,3 +273,62 @@ export const exportInput = (dbml: string, dialect: InputDialect = 'spark') =>
   exportFormat(dbml, 'localdrawdb', dialect === 'oracle' ? 'oracle' : 'spark');
 
 export const exportLocalDrawDB = exportInput;
+
+// --- API domínios/git (Spec A) ---
+
+export type DomainMeta = {
+  id: string;
+  slug: string;
+  name: string;
+  dir: string;
+  hasGit: boolean;
+  remoteUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GitStatus = { branch: string; ahead: number; behind: number; dirty: boolean; files: string[] };
+export type GitStatusResponse = { hasGit: false } | ({ hasGit: true } & GitStatus);
+
+export const listDomains = (): Promise<{ domains: DomainMeta[]; activeDomainSlug: string | null }> =>
+  get('/api/domains');
+
+export const createDomain = (name: string): Promise<DomainMeta> => post('/api/domains', { name });
+
+export const cloneDomain = (url: string, name?: string): Promise<DomainMeta> =>
+  post('/api/domains/clone', { url, name });
+
+export const attachGitToDomain = (id: string, remoteUrl?: string): Promise<DomainMeta> =>
+  post(`/api/domains/${id}/attach-git`, { remoteUrl });
+
+export const activateDomain = (id: string): Promise<{ ok: boolean; domain: DomainMeta }> =>
+  post(`/api/domains/${id}/activate`, {});
+
+export const getGitStatus = (id: string): Promise<GitStatusResponse> => get(`/api/domains/${id}/git-status`);
+
+export const switchGitBranch = (
+  id: string,
+  branch: string,
+  create = false,
+): Promise<{ ok: boolean; branch: string }> => post(`/api/domains/${id}/git/switch-branch`, { branch, create });
+
+export const gitPull = (id: string): Promise<{ ok: boolean }> => post(`/api/domains/${id}/git/pull`, {});
+
+export const gitPush = (id: string, message: string): Promise<{ ok: boolean; branch: string }> =>
+  post(`/api/domains/${id}/git/push`, { message });
+
+export const getPrUrl = (
+  id: string,
+): Promise<{ url: string | null; host: string | null; remoteUrl: string | null; branch: string }> =>
+  get(`/api/domains/${id}/git/pr-url`);
+
+export const submitGitCredential = (
+  id: string,
+  host: string,
+  username: string,
+  token: string,
+): Promise<{ ok: boolean }> => post(`/api/domains/${id}/git/credential`, { host, username, token });
+
+export const getContext = (): Promise<{ domain: DomainMeta | null }> => get('/api/context');
+
+export const clearContext = (): Promise<{ ok: boolean }> => post('/api/context/clear', {});
