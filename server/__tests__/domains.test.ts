@@ -53,13 +53,13 @@ describe('attachGitToDomain', () => {
 });
 
 describe('activateDomain', () => {
-  // O brief pedia para conferir que `projects.json` nasce dentro de `d.dir`.
-  // Isso depende do rewire de `files.ts:getDataDir()` para resolver pelo
-  // domínio ativo, que é escopo da Task 5 — hoje `ensureRegistry()` ainda
-  // grava no layout plano (`<base>/projects.json`). O que a Task 4 controla é
-  // ativar o slug ANTES de delegar a `ensureRegistry()`, para que o registry
-  // nasça no domínio certo assim que `files.ts` for religado; por isso o teste
-  // captura o slug ativo no instante da chamada (ordem), não só a contagem.
+  // Duas regressões distintas são cobertas aqui:
+  // - ORDEM: o slug precisa estar ativo no instante em que `ensureRegistry()`
+  //   é chamado (spy captura `getActiveDomainSlug()` na chamada).
+  // - PATH: o `projects.json` precisa nascer fisicamente dentro de `d.dir`
+  //   (asserção fim-a-fim). Isso só passa desde a Task 5, que religou
+  //   `files.ts:getDataDir()` para resolver pelo domínio ativo — antes dela o
+  //   registry ia para o layout plano (`<base>/projects.json`).
   it('ativa o domínio e garante o registry de projetos dele', async () => {
     const filesActual = await vi.importActual<typeof import('../files.ts')>('../files.ts');
     const { getActiveDomainSlug } = await import('../domainContext.ts');
@@ -85,6 +85,13 @@ describe('activateDomain', () => {
       // nasceria no domínio errado.
       expect(ensureRegistryCalls).toBe(1);
       expect(slugAtEnsureRegistry).toBe(d.slug);
+
+      // Fim-a-fim: o registry precisa existir DENTRO do diretório do domínio.
+      const registryExists = await fs
+        .stat(path.join(d.dir, 'projects.json'))
+        .then(() => true)
+        .catch(() => false);
+      expect(registryExists).toBe(true);
 
       const meta = await getDomain(d.id);
       expect(meta.id).toBe(d.id);

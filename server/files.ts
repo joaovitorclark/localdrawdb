@@ -4,15 +4,20 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { ROOT, DATA_DIR } from './paths.ts';
+import { getActiveDomainSlug, domainDirFor } from './domainContext.ts';
 
 export { ROOT, DATA_DIR };
 
 /**
- * Retorna o diretório de dados efetivo.
- * Em testes, LOCALDRAWDB_DATA_DIR aponta para um tmpdir isolado.
+ * Diretório de dados efetivo: domínio ativo (memória ou LOCALDRAWDB_DOMAIN)
+ * tem prioridade; senão, LOCALDRAWDB_DATA_DIR (compat com testes/legado);
+ * senão, lança erro — nenhuma rota deve chamar isto sem domínio nem override.
  */
 function getDataDir(): string {
-  return process.env.LOCALDRAWDB_DATA_DIR ?? DATA_DIR;
+  const slug = getActiveDomainSlug();
+  if (slug) return domainDirFor(slug);
+  if (process.env.LOCALDRAWDB_DATA_DIR) return process.env.LOCALDRAWDB_DATA_DIR;
+  throw new Error('Nenhum domínio ativo — selecione um projeto na tela de escolha.');
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -114,8 +119,11 @@ export function projectOutputDir(slug: string): string {
 // Registry helpers
 // ──────────────────────────────────────────────────────────────
 export async function readRegistry(): Promise<Registry> {
+  // Resolvido FORA do try: se não há domínio ativo nem override, getDataDir()
+  // lança e o erro deve propagar (não pode ser confundido com "arquivo ausente").
+  const regPath = registryPath();
   try {
-    const raw = await fs.readFile(registryPath(), 'utf8');
+    const raw = await fs.readFile(regPath, 'utf8');
     const reg = JSON.parse(raw) as Registry;
     if (reg.projects?.length) return reg;
   } catch {
