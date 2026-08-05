@@ -22,6 +22,15 @@ function mockExecFileFail(stderr: string) {
   });
 }
 
+// Falha de spawn: o processo nem chega a rodar, então não há `err.stderr` e o
+// callback recebe stderr como string vazia — todo o diagnóstico está em err.message.
+function mockExecFileSpawnFail(message: string) {
+  execFileMock.mockImplementationOnce((_cmd, _args, optsOrCb, cb) => {
+    const callback = typeof optsOrCb === 'function' ? optsOrCb : cb;
+    callback(new Error(message), '', '');
+  });
+}
+
 beforeEach(() => {
   execFileMock.mockReset();
 });
@@ -142,6 +151,37 @@ describe('remoteUrl', () => {
     mockExecFileOnce('https://github.com/acme/repo.git');
     const { remoteUrl } = await import('../git.ts');
     expect(await remoteUrl('/tmp/repo')).toBe('https://github.com/acme/repo.git');
+  });
+});
+
+describe('erros do wrapper', () => {
+  it('preserva o diagnóstico do spawn quando o git nem chega a rodar', async () => {
+    mockExecFileSpawnFail('spawn git ENOENT');
+    const { currentBranch } = await import('../git.ts');
+    await expect(currentBranch('/tmp/repo')).rejects.toMatchObject({
+      name: 'GitError',
+      stderr: 'spawn git ENOENT',
+    });
+  });
+
+  it('redige credenciais embutidas na URL, na mensagem e no stderr', async () => {
+    execFileMock.mockImplementationOnce((_cmd, _args, optsOrCb, cb) => {
+      const callback = typeof optsOrCb === 'function' ? optsOrCb : cb;
+      const err = new Error('git failed') as Error & { stderr?: string };
+      err.stderr = "fatal: unable to access 'https://me:tok123@github.com/acme/repo.git/'";
+      callback(err, '', err.stderr);
+    });
+    const { cloneRepo } = await import('../git.ts');
+    let error!: Error & { stderr: string };
+    try {
+      await cloneRepo('https://me:tok123@github.com/acme/repo.git', '/tmp/repo');
+    } catch (e) {
+      error = e as Error & { stderr: string };
+    }
+    expect(error.message).not.toContain('tok123');
+    expect(error.stderr).not.toContain('tok123');
+    expect(error.message).toContain('https://***@github.com/acme/repo.git');
+    expect(error.stderr).toContain('https://***@github.com/acme/repo.git');
   });
 });
 

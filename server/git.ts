@@ -12,6 +12,15 @@ export class GitError extends Error {
   }
 }
 
+// URLs de remote podem carregar credenciais embutidas
+// (`https://user:token@host/repo.git`). Elas aparecem tanto nos args do comando
+// quanto no stderr do git ("fatal: unable to access 'https://user:token@...'"),
+// e a mensagem do GitError é o campo mais provável de acabar em log ou resposta
+// HTTP — então redigimos antes de construir o erro.
+function redactCredentials(text: string): string {
+  return text.replace(/(https?:\/\/)[^\s/@]+@/g, '$1***@');
+}
+
 export interface GitStatus {
   branch: string;
   ahead: number;
@@ -24,8 +33,13 @@ function run(cwd: string, args: string[], opts: { trim?: boolean } = {}): Promis
   return new Promise((resolve, reject) => {
     execFile('git', args, { cwd }, (err, stdout, stderr) => {
       if (err) {
-        const stderrText = (err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? stderr ?? err.message;
-        reject(new GitError(`git ${args.join(' ')} falhou`, stderrText));
+        // `||` e não `??`: numa falha de spawn (git fora do PATH, cwd inexistente)
+        // `err.stderr` é undefined e `stderr` chega como string vazia — que não é
+        // nullish e engoliria o `err.message` ("spawn git ENOENT"), o único
+        // diagnóstico disponível nesse caso.
+        const rawStderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr;
+        const stderrText = (rawStderr && rawStderr.trim()) || (stderr && String(stderr).trim()) || err.message;
+        reject(new GitError(redactCredentials(`git ${args.join(' ')} falhou`), redactCredentials(stderrText)));
         return;
       }
       // O porcelain do `git status` carrega o código de status nas 2 primeiras
