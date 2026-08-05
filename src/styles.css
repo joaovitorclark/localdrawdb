@@ -2986,3 +2986,55 @@ body {
 .domain-picker__new-form input {
   flex: 1;
 }
+
+/* Credentials wizard (Spec A) */
+.credentials-wizard__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  background: rgba(9, 14, 25, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.credentials-wizard {
+  width: min(380px, 100%);
+  padding: 20px;
+  /* Mesmo padrão de modal claro do .shortcuts-overlay: fundo branco exige cor de
+     texto explícita, senão herda --text (claro) do body e some no branco. */
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--fs-md, 13px);
+}
+
+.credentials-wizard h3 {
+  margin: 0;
+  font-size: var(--fs-lg, 15px);
+}
+
+.credentials-wizard p {
+  margin: 0;
+  color: var(--muted-on-light, #5a6b85);
+}
+
+.credentials-wizard__link {
+  color: var(--brand-green, #00995d);
+}
+
+.credentials-wizard__error {
+  color: var(--danger, #c0392b);
+}
+
+.credentials-wizard__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
