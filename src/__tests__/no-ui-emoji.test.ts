@@ -22,6 +22,8 @@ const FILES = [
   'src/domains/domainPickerHelpers.ts',
   'src/domains/CredentialsWizard.tsx',
   'src/domains/tokenUrl.ts',
+  'src/domains/GitPanel.tsx',
+  'src/domains/gitPanelHelpers.ts',
 ];
 
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F000}-\u{1F02F}]/u;
