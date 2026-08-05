@@ -2908,3 +2908,60 @@ body {
     border-bottom: none;
   }
 }
+
+/* Domain picker (Spec A) */
+.domain-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 24px;
+  gap: 16px;
+}
+
+.domain-picker__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.domain-picker__back {
+  margin-left: auto;
+}
+
+.domain-picker__error {
+  color: var(--danger, #c0392b);
+}
+
+.domain-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 480px;
+}
+
+.domain-picker__item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.domain-picker__item:hover {
+  background: var(--hover-bg, #f3f3f3);
+}
+
+.domain-picker__new-actions,
+.domain-picker__new-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.domain-picker__new-form input {
+  flex: 1;
+}
