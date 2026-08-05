@@ -36,24 +36,40 @@ async function main() {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
-  // Sem este handler, uma falha de spawn (node.exe ausente/corrompido no zip
+
+  // Sem tratar 'error', uma falha de spawn (node.exe ausente/corrompido no zip
   // extraído) vira 'error' sem listener — uncaught exception com stack trace na
-  // cara do usuário. Aqui vira mensagem legível + exit code 1.
-  child.on('error', (err) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    console.error(`Não foi possível iniciar o servidor (${nodeExe}):`, err.message);
-    process.exitCode = 1;
+  // cara do usuário. Aqui vira promise pra também *interromper* as esperas
+  // abaixo, em vez de só registrar a falha e deixar o launcher seguir esperando.
+  let spawnFailed = false;
+  const childFailed = new Promise((_resolve, reject) => {
+    child.on('error', (err) => {
+      spawnFailed = true;
+      err.launcherMessage = `Não foi possível iniciar o servidor (${nodeExe}): ${err.message}`;
+      reject(err);
+    });
   });
+  // Os race abaixo só consomem a rejeição se ela chegar primeiro; sem este
+  // catch, um 'error' tardio viraria unhandled rejection.
+  childFailed.catch(() => {});
+  const childSpawned = new Promise((resolve) => child.once('spawn', resolve));
+
   child.on('exit', (code) => {
-    if (!shuttingDown) process.exit(code ?? 0);
+    if (!shuttingDown && !spawnFailed) process.exitCode = code ?? 0;
   });
 
   try {
-    await waitForPort(port, '127.0.0.1', 30_000);
+    // Só começa a esperar a porta depois do spawn confirmar. Não é detalhe: o
+    // waitForPort segura o event loop com os próprios timers de retry, então
+    // largá-lo num Promise.race não encurta nada — o processo ficaria os 30s
+    // inteiros vivo mesmo já sabendo da falha (e com SIGINT/SIGTERM inúteis
+    // nesse meio tempo). Falhando antes de entrar nele, o launcher sai na hora.
+    await Promise.race([childSpawned, childFailed]);
+    await Promise.race([waitForPort(port, '127.0.0.1', 30_000), childFailed]);
   } catch (err) {
-    console.error('LocalDrawDB não respondeu a tempo:', err.message);
-    shutdown();
+    console.error(err.launcherMessage ?? `LocalDrawDB não respondeu a tempo: ${err.message}`);
+    child.kill();
+    process.exitCode = 1;
     return;
   }
 
