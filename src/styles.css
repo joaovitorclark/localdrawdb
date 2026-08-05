@@ -2960,20 +2960,20 @@ body {
   padding: 1px 6px;
   border: 1px solid var(--border, #ccc);
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--fs-xs, 11px);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.85;
 }
 
 .domain-picker__badge--git {
-  border-color: #2f855a;
-  color: #2f855a;
+  border-color: var(--brand-green, #2f855a);
+  color: var(--brand-green, #2f855a);
 }
 
 .domain-picker__badge--local {
   border-color: var(--border, #999);
-  color: var(--muted, #777);
+  color: var(--muted-on-light, #5a6b85);
 }
 
 .domain-picker__new-actions,
