@@ -15,6 +15,13 @@ const execFileRaw = promisify(execFileCb);
 // escondendo o erro real.
 const execFile = (cmd, args, opts) => execFileRaw(cmd, args, { maxBuffer: 64 * 1024 * 1024, ...opts });
 
+// No Windows, `npm`/`npx` são scripts .cmd; `execFile` sem shell não resolve via
+// PATHEXT e, desde o CVE-2024-27980, o Node se recusa a executar .cmd sem shell
+// explícito. Resolver o nome completo do binário mantém o script funcional num
+// host de desenvolvimento Windows sem precisar de `shell: true`.
+const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const NPX_BIN = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 async function pathExists(p) {
@@ -65,14 +72,14 @@ export async function bundleServer({ outDir, execImpl = execFile } = {}) {
   };
   await fs.writeFile(path.join(stageDir, 'package.json'), JSON.stringify(prodPkg, null, 2));
   await fs.copyFile(path.join(ROOT, 'package-lock.json'), path.join(stageDir, 'package-lock.json'));
-  await execImpl('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], { cwd: stageDir });
+  await execImpl(NPM_BIN, ['install', '--omit=dev', '--no-audit', '--no-fund'], { cwd: stageDir });
   await fs.rename(path.join(stageDir, 'node_modules'), path.join(appDir, 'node_modules'));
   await fs.rm(stageDir, { recursive: true, force: true });
 
   // 3) Build do Vite (dist/) — reusa o build normal do projeto, depois copia
   //    pra fora de app/ (ROOT do bundle resolve um nível acima de app/, ver
   //    "Descobertas técnicas" no topo do plano).
-  await execImpl('npx', ['vite', 'build'], { cwd: ROOT });
+  await execImpl(NPX_BIN, ['vite', 'build'], { cwd: ROOT });
   const builtDist = path.join(ROOT, 'dist');
   if (!(await pathExists(builtDist))) {
     throw new Error(`vite build não produziu ${builtDist}`);
