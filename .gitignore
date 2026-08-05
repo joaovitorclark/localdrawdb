@@ -13,6 +13,7 @@ tmp/
 # Dependências e builds
 node_modules/
 dist/
+.cache/
 *.log
 npm-debug.log*
 
