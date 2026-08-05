@@ -5,6 +5,19 @@ import { formatGitSummary, hostFromRemote, isAuthError } from './gitPanelHelpers
 import { CredentialsWizard } from './CredentialsWizard';
 
 /**
+ * `api.ts` monta o erro como `` `${url} -> ${status}: ${serverError}` ``; o que interessa
+ * ao usuário é o `serverError`. Mensagens sem esse formato passam inalteradas.
+ */
+function readableError(msg: string): string {
+  return msg.split(': ').slice(1).join(': ') || msg;
+}
+
+/** Guard do servidor (`server/git.ts`): trocar de branch com a árvore suja sempre falha. */
+function isDirtyTreeError(msg: string): boolean {
+  return /n[ãa]o commitadas/i.test(msg);
+}
+
+/**
  * Painel de git da toolbar: branch atual, resumo do status e as ações do dia a dia
  * (atualizar/publicar/abrir PR). Erros de credencial abrem o `CredentialsWizard`
  * em vez de despejar a mensagem crua do git na toolbar.
@@ -89,9 +102,11 @@ export function GitPanel({ domain }: { domain: DomainMeta }) {
         await api.switchGitBranch(domain.id, target, false);
       } catch (e: unknown) {
         // Branch inexistente é o caso comum aqui: oferece criar em vez de só falhar.
+        // Erro de credencial ou árvore suja não tem conserto criando a branch: propaga.
         const msg = (e as Error)?.message ?? String(e);
-        if (isAuthError(msg)) throw e;
-        if (!window.confirm(`Não foi possível trocar para "${target}". Criar a branch?`)) throw e;
+        if (isAuthError(msg) || isDirtyTreeError(msg)) throw e;
+        const reason = readableError(msg);
+        if (!window.confirm(`${reason}\n\nCriar a branch "${target}"?`)) throw e;
         await api.switchGitBranch(domain.id, target, true);
       }
       setMessage(`Na branch ${target}.`);
@@ -131,8 +146,11 @@ export function GitPanel({ domain }: { domain: DomainMeta }) {
         Credenciais
       </button>
       {message && (
-        <span className={error ? 'git-panel__message git-panel__message--error' : 'git-panel__message'}>
-          {message}
+        <span
+          className={error ? 'git-panel__message git-panel__message--error' : 'git-panel__message'}
+          title={message}
+        >
+          {error ? readableError(message) : message}
         </span>
       )}
       {wizardHost && (
