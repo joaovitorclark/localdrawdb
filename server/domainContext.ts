@@ -32,7 +32,8 @@ export function setActiveDomainSlug(slug: string | null): void {
 
 /** Domínio ativo: memória (setActiveDomainSlug) > LOCALDRAWDB_DOMAIN (pin de processo) > null. */
 export function getActiveDomainSlug(): string | null {
-  return activeDomainSlug ?? process.env.LOCALDRAWDB_DOMAIN?.trim() ?? null;
+  const pinned = process.env.LOCALDRAWDB_DOMAIN?.trim();
+  return activeDomainSlug ?? (pinned || null);
 }
 
 /** Diretório do domínio ativo. Lança erro se nenhum domínio estiver ativo. */
