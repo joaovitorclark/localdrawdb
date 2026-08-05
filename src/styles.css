@@ -2910,12 +2910,25 @@ body {
 }
 
 /* Domain picker (Spec A) */
+/* Mesmo padrão dos modais claros (ex.: .credentials-wizard): estas telas ficam
+   sobre --canvas-bg (claro), então precisam de cor de texto explícita — senão
+   herdam --text (claro, pensado para fundo escuro) e somem. */
+.domain-picker,
+.app-gate-loading {
+  color: #0f172a;
+}
+
 .domain-picker {
   display: flex;
   flex-direction: column;
   height: 100vh;
   padding: 24px;
   gap: 16px;
+}
+
+/* Vence o .brand global (color: #fff), que é para a .toolbar de fundo escuro. */
+.domain-picker .brand {
+  color: #0f172a;
 }
 
 .domain-picker__header {
