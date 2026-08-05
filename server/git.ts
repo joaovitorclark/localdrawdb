@@ -1,6 +1,7 @@
 // Wrapper fino sobre o `git` do sistema (child_process). Sem lib de git em
 // JS — decisão da Spec A (robustez de auth/SSH/LFS de graça).
 import { execFile } from 'node:child_process';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 export class GitError extends Error {
@@ -21,6 +22,22 @@ function redactCredentials(text: string): string {
   return text.replace(/(https?:\/\/)[^\s/@]+@/g, '$1***@');
 }
 
+// Opções comuns a todo spawn de `git`:
+// - `GIT_TERMINAL_PROMPT=0`: sem isso, um `pull`/`clone` contra repo privado sem
+//   credencial configurada fica pendurado pedindo login no terminal — segurando
+//   a requisição HTTP indefinidamente.
+// - `timeout`: rede lenta/remote inacessível não pode virar request eterno.
+// - `maxBuffer`: saídas grandes (clone verboso, status enorme) não podem matar
+//   o comando com ENOBUFS no default de 1MB.
+function spawnOptions(cwd: string) {
+  return {
+    cwd,
+    timeout: 30_000,
+    maxBuffer: 10 * 1024 * 1024,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+  };
+}
+
 export interface GitStatus {
   branch: string;
   ahead: number;
@@ -31,7 +48,7 @@ export interface GitStatus {
 
 function run(cwd: string, args: string[], opts: { trim?: boolean } = {}): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('git', args, { cwd }, (err, stdout, stderr) => {
+    execFile('git', args, spawnOptions(cwd), (err, stdout, stderr) => {
       if (err) {
         // `||` e não `??`: numa falha de spawn (git fora do PATH, cwd inexistente)
         // `err.stderr` é undefined e `stderr` chega como string vazia — que não é
@@ -58,10 +75,18 @@ export async function isGitAvailable(): Promise<boolean> {
   }
 }
 
+// `rev-parse --is-inside-work-tree` responde true para QUALQUER subdiretório de
+// QUALQUER repositório ancestral — inclusive `data/domains/<slug>/` dentro do
+// próprio clone do LocalDrawDB, o que fazia todo domínio local nascer com
+// `hasGit: true` e o remote do projeto (push/switch-branch operariam no repo
+// real). Comparamos o toplevel com o próprio `dir`: só é repo se ele for a raiz.
+// `fs.realpath` dos dois lados porque `os.tmpdir()` no macOS é symlink
+// (`/var` -> `/private/var`) e o git devolve o caminho já resolvido.
 export async function isGitRepo(dir: string): Promise<boolean> {
   try {
-    await run(dir, ['rev-parse', '--is-inside-work-tree']);
-    return true;
+    const top = await run(dir, ['rev-parse', '--show-toplevel']);
+    const [a, b] = await Promise.all([fs.realpath(top), fs.realpath(dir)]);
+    return path.resolve(a) === path.resolve(b);
   } catch {
     return false;
   }
@@ -155,9 +180,15 @@ export async function credentialApprove(
     `protocol=${input.protocol}\nhost=${input.host}\nusername=${input.username}\n` +
     `password=${input.password}\n\n`;
   await new Promise<void>((resolve, reject) => {
-    const child = execFile('git', ['credential', 'approve'], { cwd: dir }, (err, _stdout, stderr) => {
+    const child = execFile('git', ['credential', 'approve'], spawnOptions(dir), (err, _stdout, stderr) => {
       if (err) {
-        reject(new GitError('git credential approve falhou', stderr ?? err.message));
+        // Mesmo tratamento do `run()`: `credentialApprove` não passa por ele
+        // (precisa do handle do processo pra escrever no stdin), então o
+        // fallback com `||` (stderr vazio não engole o err.message) e a redação
+        // de credenciais precisam ser repetidos aqui.
+        const rawStderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr;
+        const stderrText = (rawStderr && rawStderr.trim()) || (stderr && String(stderr).trim()) || err.message;
+        reject(new GitError('git credential approve falhou', redactCredentials(stderrText)));
         return;
       }
       resolve();
