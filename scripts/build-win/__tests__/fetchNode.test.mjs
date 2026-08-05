@@ -91,6 +91,38 @@ describe('ensureNodePortable', () => {
     expect(exists).toBe(true);
   });
 
+  it('normaliza cacheDir relativo para absoluto antes de extrair', async () => {
+    const relCacheDir = path.relative(process.cwd(), path.join(tmpDir, 'cache'));
+    expect(path.isAbsolute(relCacheDir)).toBe(false);
+
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    });
+    const extractImpl = vi.fn().mockImplementation(async (_zipPath, { dir }) => {
+      // extract-zip real lança se dir não for absoluto — o mock afirma o mesmo contrato.
+      expect(path.isAbsolute(dir)).toBe(true);
+      const nodeSubdir = path.join(dir, `node-v22.11.0-win-x64`);
+      await fs.mkdir(nodeSubdir, { recursive: true });
+      await fs.writeFile(path.join(nodeSubdir, 'node.exe'), 'fake-binary');
+    });
+
+    const nodeDir = await ensureNodePortable({
+      version: '22.11.0',
+      cacheDir: relCacheDir,
+      fetchImpl,
+      extractImpl,
+    });
+
+    expect(extractImpl).toHaveBeenCalledTimes(1);
+    expect(path.isAbsolute(nodeDir)).toBe(true);
+    const exists = await fs
+      .stat(path.join(nodeDir, 'node.exe'))
+      .then(() => true)
+      .catch(() => false);
+    expect(exists).toBe(true);
+  });
+
   it('lança erro claro se o download falhar (ok: false)', async () => {
     const cacheDir = path.join(tmpDir, 'cache');
     const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 404 });

@@ -29,15 +29,19 @@ export async function ensureNodePortable({
 } = {}) {
   if (!cacheDir) throw new Error('ensureNodePortable: cacheDir é obrigatório');
 
+  // extract-zip exige dir absoluto ("Target directory is expected to be
+  // absolute"); normalizar aqui blinda qualquer chamador.
+  const absCacheDir = path.resolve(cacheDir);
+
   const nodeDirName = `node-v${version}-win-x64`;
-  const nodeDir = path.join(cacheDir, nodeDirName);
+  const nodeDir = path.join(absCacheDir, nodeDirName);
   const nodeExe = path.join(nodeDir, 'node.exe');
 
   if (await pathExists(nodeExe)) {
     return nodeDir;
   }
 
-  await fs.mkdir(cacheDir, { recursive: true });
+  await fs.mkdir(absCacheDir, { recursive: true });
 
   const url = nodeDownloadUrl(version);
   const res = await fetchImpl(url);
@@ -46,10 +50,10 @@ export async function ensureNodePortable({
   }
   const buf = Buffer.from(await res.arrayBuffer());
 
-  const zipPath = path.join(cacheDir, `${nodeDirName}.zip`);
+  const zipPath = path.join(absCacheDir, `${nodeDirName}.zip`);
   await fs.writeFile(zipPath, buf);
 
-  await extractImpl(zipPath, { dir: cacheDir });
+  await extractImpl(zipPath, { dir: absCacheDir });
   await fs.rm(zipPath, { force: true });
 
   if (!(await pathExists(nodeExe))) {
