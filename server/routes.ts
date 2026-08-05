@@ -27,6 +27,9 @@ import {
 } from './files.ts';
 import type { Model } from './model.ts';
 import { registerExportRoutes } from './routes/exportRoutes.ts';
+import { registerDomainRoutes } from './routes/domainRoutes.ts';
+import { isGitAvailable } from './git.ts';
+import { getActiveDomainSlug } from './domainContext.ts';
 
 type ProjectBody = { dbml?: string; canvas?: unknown };
 type DbmlBody = { dbml?: string };
@@ -152,24 +155,52 @@ async function requirePinMatch(reply: FastifyReply, id: string): Promise<boolean
   return true; // sem pin, ou id é o próprio projeto fixado, ou id inexistente (handler trata 404)
 }
 
+/**
+ * Garante domínio ativo antes de qualquer rota de projeto legada.
+ * `ensureRegistry()` resolve o diretório de dados pelo domínio ativo (ou pelo
+ * override LOCALDRAWDB_DATA_DIR) e lança se não houver nenhum dos dois —
+ * traduzimos isso em 409 para o front abrir a tela de escolha de domínio.
+ */
+async function requireActiveDomain(reply: FastifyReply): Promise<boolean> {
+  try {
+    await ensureRegistry();
+    return true;
+  } catch (e: any) {
+    reply.code(409).send({ error: e?.message ?? 'Nenhum domínio ativo.' });
+    return false;
+  }
+}
+
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  // Garante estrutura multi-projeto antes de qualquer rota ser chamada.
-  await ensureRegistry();
+  // Sem ensureRegistry() aqui: o servidor precisa subir antes de haver domínio
+  // ativo (a tela de escolha é servida pela própria API). Cada rota legada
+  // garante o registry sob demanda via requireActiveDomain().
+  registerDomainRoutes(app);
 
   app.get('/api/meta', async () => {
-    const pin = await pinnedSlug();
+    // /api/meta precisa responder mesmo sem domínio ativo — é o que o front
+    // consulta antes de escolher um domínio.
+    const pin = await pinnedSlug().catch(() => null);
     let pinnedProjectId: string | null = null;
     if (pin) {
-      const reg = await readRegistry();
+      const reg = await readRegistry().catch(() => ({ activeId: '', projects: [] as { slug: string; id: string }[] }));
       pinnedProjectId = reg.projects.find((p) => p.slug === pin)?.id ?? null;
+    }
+    let inputDir: string | null = null;
+    try {
+      inputDir = await getActiveInputDir();
+    } catch {
+      inputDir = null;
     }
     return {
       root: ROOT,
       dataDir: DATA_DIR,
-      inputDir: await getActiveInputDir(),
+      inputDir,
       port: Number(process.env.PORT ?? 5174),
       pinnedProject: pin,
       pinnedProjectId,
+      gitAvailable: await isGitAvailable(),
+      activeDomain: getActiveDomainSlug(),
     };
   });
 
@@ -178,13 +209,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // ──────────────────────────────────────────────────────────────
 
   /** Lista todos os projetos e o id ativo. */
-  app.get('/api/projects', async () => {
+  app.get('/api/projects', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     const [projects, activeId] = await Promise.all([listProjects(), getActiveId()]);
     return { activeId, projects };
   });
 
   /** Cria novo projeto. Retorna 201 com o ProjectMeta. */
   app.post<{ Body: CreateProjectBody }>('/api/projects', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     if (!(await requireUnpinned(reply))) return;
     const name = req.body?.name ?? 'Novo Projeto';
     const meta = await createProject(name);
@@ -194,6 +227,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   /** Carrega DBML + canvas de um projeto pelo id. */
   app.get<{ Params: { id: string } }>('/api/projects/:id', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     try {
       const proj = await getProject(req.params.id);
       return loadProjectBySlug(proj.slug);
@@ -207,6 +241,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   /** Salva DBML + canvas de um projeto pelo id. */
   app.put<{ Params: { id: string }; Body: ProjectBody }>('/api/projects/:id', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     if (!(await requirePinMatch(reply, req.params.id))) return;
     try {
       const proj = await getProject(req.params.id);
@@ -223,6 +258,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   /** Renomeia um projeto pelo id. */
   app.patch<{ Params: { id: string }; Body: { name?: string } }>('/api/projects/:id', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     if (!(await requireUnpinned(reply))) return;
     try {
       const name = req.body?.name ?? '';
@@ -238,6 +274,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   /** Remove um projeto. 409 se for o último; 404 se não encontrado. */
   app.delete<{ Params: { id: string } }>('/api/projects/:id', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     if (!(await requireUnpinned(reply))) return;
     try {
       // Verifica existência antes de tentar deletar (para distinguir 404 de 409).
@@ -258,6 +295,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   /** Duplica um projeto. Retorna 201 com o novo ProjectMeta. */
   app.post<{ Params: { id: string }; Body: DuplicateBody }>('/api/projects/:id/duplicate', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     if (!(await requireUnpinned(reply))) return;
     try {
       const newName = req.body?.name;
@@ -274,6 +312,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   /** Torna um projeto o ativo. */
   app.post<{ Params: { id: string } }>('/api/projects/:id/activate', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     const pin = await pinnedSlug();
     if (pin) return { ok: true, pinned: pin };
     try {
@@ -289,6 +328,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   /** Import de SQL para um projeto específico pelo id. */
   app.post<{ Params: { id: string }; Body: DbmlBody }>('/api/projects/:id/import', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     if (!(await requirePinMatch(reply, req.params.id))) return;
     try {
       const proj = await getProject(req.params.id);
@@ -307,15 +347,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // Rotas legadas (projeto ativo)
   // ──────────────────────────────────────────────────────────────
 
-  app.get('/api/project', async () => loadProject());
+  app.get('/api/project', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
+    return loadProject();
+  });
 
-  app.put<{ Body: ProjectBody }>('/api/project', async (req) => {
+  app.put<{ Body: ProjectBody }>('/api/project', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     const { dbml = '', canvas = {} } = req.body ?? {};
     await saveProject(dbml, canvas);
     return { ok: true };
   });
 
-  app.post<{ Body: DbmlBody }>('/api/import', async (req) => {
+  app.post<{ Body: DbmlBody }>('/api/import', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     const baseDbml = req.body?.dbml ?? '';
     const inputs = await readImportInputsForSlug(await getActiveSlug());
     return runImport(inputs, baseDbml);
@@ -323,7 +368,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   registerExportRoutes(app, parseOr400);
 
-  app.post<{ Body: PngBody }>('/api/export/png', async (req) => {
+  app.post<{ Body: PngBody }>('/api/export/png', async (req, reply) => {
+    if (!(await requireActiveDomain(reply))) return;
     const data = (req.body?.pngBase64 ?? '').replace(/^data:image\/png;base64,/, '');
     const buf = Buffer.from(data, 'base64');
     const file = await writeOutput('diagram.png', buf);

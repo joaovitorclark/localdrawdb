@@ -4,19 +4,25 @@ import { existsSync } from 'node:fs';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { registerRoutes } from './routes.ts';
-import { ROOT, ensureRegistry, pinnedSlug } from './files.ts';
+import { ROOT, pinnedSlug } from './files.ts';
+import { migrateLegacyDomains } from './domains.ts';
+import { getActiveDomainSlug } from './domainContext.ts';
 
 const APP_ROOT = ROOT;
 const PORT = Number(process.env.PORT ?? 5174);
 const isProd = process.env.NODE_ENV === 'production';
 
 async function main() {
-  // Garante o registry: migra instalação legada/limpa e reconstrói projects.json
-  // a partir das pastas em projects/ caso o arquivo tenha sido apagado.
-  await ensureRegistry();
+  // Migra o layout legado (data/projects/ direto em data/) para
+  // data/domains/local/ — idempotente e não requer domínio ativo.
+  await migrateLegacyDomains();
 
-  // Falha cedo se LOCALDRAWDB_PROJECT apontar para um projeto inexistente.
-  await pinnedSlug();
+  // Falha cedo se LOCALDRAWDB_PROJECT apontar para um projeto inexistente —
+  // só faz sentido checar quando já há domínio ativo (LOCALDRAWDB_DOMAIN);
+  // sem ele, a tela de escolha é quem vai definir o domínio.
+  if (getActiveDomainSlug()) {
+    await pinnedSlug();
+  }
 
   const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 });
 

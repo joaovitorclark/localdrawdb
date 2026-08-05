@@ -68,6 +68,13 @@ export async function isGitRepo(dir: string): Promise<boolean> {
 }
 
 export async function currentBranch(dir: string): Promise<string> {
+  // `branch --show-current` também funciona em repositório recém-inicializado
+  // (branch "unborn", ainda sem commits) — cenário normal logo após
+  // attachGitToDomain —, onde `rev-parse --abbrev-ref HEAD` falha com
+  // "fatal: ambiguous argument 'HEAD'".
+  const name = await run(dir, ['branch', '--show-current']);
+  if (name) return name;
+  // Vazio = HEAD destacado; mantém o comportamento anterior (retorna "HEAD").
   return run(dir, ['rev-parse', '--abbrev-ref', 'HEAD']);
 }
 
