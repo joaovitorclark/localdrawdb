@@ -11,6 +11,9 @@ import type { DomainMeta } from '../api';
 
 export function AppGate() {
   const [activeDomain, setActiveDomain] = useState<DomainMeta | null | undefined>(undefined);
+  // Incrementado quando o git muda os arquivos em disco (pull / troca de branch):
+  // entra na `key` do App para forçar remount e recarregar tudo do servidor.
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     api
@@ -23,6 +26,8 @@ export function AppGate() {
     setActiveDomain(domain);
   }, []);
 
+  const handleRepoChanged = useCallback(() => setNonce((n) => n + 1), []);
+
   const handleBackToDomains = useCallback(() => {
     void api.clearContext().catch(() => {});
     setActiveDomain(null);
@@ -34,5 +39,12 @@ export function AppGate() {
   if (activeDomain === null) {
     return <DomainPicker onOpened={handleOpened} />;
   }
-  return <App key={activeDomain.id} domain={activeDomain} onBackToDomains={handleBackToDomains} />;
+  return (
+    <App
+      key={`${activeDomain.id}:${nonce}`}
+      domain={activeDomain}
+      onBackToDomains={handleBackToDomains}
+      onRepoChanged={handleRepoChanged}
+    />
+  );
 }

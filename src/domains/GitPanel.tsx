@@ -23,8 +23,18 @@ function isDirtyTreeError(msg: string): boolean {
  * em vez de despejar a mensagem crua do git na toolbar.
  *
  * Domínio sem git não renderiza nada (`null`).
+ *
+ * `onRepoChanged` avisa o dono que os ARQUIVOS em disco mudaram (pull ou troca de
+ * branch). Sem isso o App continuaria com o modelo carregado na montagem e o
+ * autosave gravaria o state antigo por cima do que acabou de ser puxado.
  */
-export function GitPanel({ domain }: { domain: DomainMeta }) {
+export function GitPanel({
+  domain,
+  onRepoChanged,
+}: {
+  domain: DomainMeta;
+  onRepoChanged?: () => void;
+}) {
   const [status, setStatus] = useState<GitStatusResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -81,6 +91,9 @@ export function GitPanel({ domain }: { domain: DomainMeta }) {
     run(async () => {
       await api.gitPull(domain.id);
       setMessage('Atualizado.');
+      // O pull reescreveu project.dbml/canvas.json em disco: o dono precisa
+      // recarregar o App, senão o autosave sobrescreve o que foi puxado.
+      onRepoChanged?.();
     });
 
   const handlePublish = () => {
@@ -110,6 +123,8 @@ export function GitPanel({ domain }: { domain: DomainMeta }) {
         await api.switchGitBranch(domain.id, target, true);
       }
       setMessage(`Na branch ${target}.`);
+      // Trocar de branch troca os arquivos do working tree: mesmo motivo do pull.
+      onRepoChanged?.();
     });
   };
 

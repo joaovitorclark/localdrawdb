@@ -6,7 +6,7 @@ import fastifyStatic from '@fastify/static';
 import { registerRoutes } from './routes.ts';
 import { ROOT, pinnedSlug } from './files.ts';
 import { migrateLegacyDomains } from './domains.ts';
-import { getActiveDomainSlug } from './domainContext.ts';
+import { getActiveDomainSlug, baseDataDir } from './domainContext.ts';
 
 const APP_ROOT = ROOT;
 const PORT = Number(process.env.PORT ?? 5174);
@@ -15,7 +15,17 @@ const isProd = process.env.NODE_ENV === 'production';
 async function main() {
   // Migra o layout legado (data/projects/ direto em data/) para
   // data/domains/local/ — idempotente e não requer domínio ativo.
-  await migrateLegacyDomains();
+  // Falhar aqui impede o boot: a mensagem precisa dizer o que inspecionar,
+  // porque não há UI para se recuperar de um data/ inconsistente.
+  try {
+    await migrateLegacyDomains();
+  } catch (err) {
+    console.error(
+      `[localdrawdb] Falha ao migrar dados legados em "${baseDataDir()}" — inspecione manualmente ` +
+        `antes de tentar de novo. Nenhum dado foi sobrescrito.`,
+    );
+    throw err;
+  }
 
   // Falha cedo se LOCALDRAWDB_PROJECT apontar para um projeto inexistente —
   // só faz sentido checar quando já há domínio ativo (LOCALDRAWDB_DOMAIN);

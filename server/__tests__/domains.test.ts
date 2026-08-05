@@ -154,6 +154,48 @@ describe('migrateLegacyDomains', () => {
     expect(domains).toHaveLength(1);
   });
 
+  it('colisão com destino já existente: preserva o legado em .legacy-* em vez de falhar', async () => {
+    // Migração parcial anterior: data/domains/local/ já tem projects/ + projects.json,
+    // mas os legados na raiz de data/ ainda existem. `fs.rename` direto daria
+    // ENOTEMPTY/EEXIST e derrubaria o boot.
+    const localDir = path.join(tmpDir, 'domains', 'local');
+    await fs.mkdir(path.join(localDir, 'projects', 'default'), { recursive: true });
+    await fs.writeFile(path.join(localDir, 'projects', 'default', 'project.dbml'), 'novo', 'utf8');
+    await fs.writeFile(path.join(localDir, 'projects.json'), '{"activeId":"n","projects":[]}', 'utf8');
+
+    await fs.mkdir(path.join(tmpDir, 'projects', 'default'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'projects', 'default', 'project.dbml'), 'legado', 'utf8');
+    await fs.writeFile(path.join(tmpDir, 'projects.json'), '{"activeId":"l","projects":[]}', 'utf8');
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { migrateLegacyDomains, listDomains } = await import('../domains.ts');
+      await expect(migrateLegacyDomains()).resolves.toBeUndefined();
+      expect((await listDomains()).map((d) => d.slug)).toEqual(['local']);
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+
+    // Destino intacto (não sobrescrito pelo legado).
+    expect(
+      await fs.readFile(path.join(localDir, 'projects', 'default', 'project.dbml'), 'utf8'),
+    ).toBe('novo');
+    expect(await fs.readFile(path.join(localDir, 'projects.json'), 'utf8')).toContain('"n"');
+
+    // Legado preservado em .legacy-*, não perdido nem deixado no caminho original.
+    const entries = await fs.readdir(tmpDir);
+    expect(entries).not.toContain('projects');
+    expect(entries).not.toContain('projects.json');
+    const backups = entries.filter((e) => e.includes('.legacy-'));
+    expect(backups.some((e) => e.startsWith('projects.json.legacy-'))).toBe(true);
+    const dirBackup = backups.find((e) => e.startsWith('projects.legacy-'));
+    expect(dirBackup).toBeDefined();
+    expect(
+      await fs.readFile(path.join(tmpDir, dirBackup!, 'default', 'project.dbml'), 'utf8'),
+    ).toBe('legado');
+  });
+
   it('não sobrescreve domínios já registrados manualmente', async () => {
     const { migrateLegacyDomains, createLocalDomain, listDomains } = await import('../domains.ts');
     await createLocalDomain('Já Existia');

@@ -149,41 +149,74 @@ export async function activateDomain(id: string): Promise<DomainMeta> {
   return meta;
 }
 
+async function pathExists(p: string): Promise<boolean> {
+  return fs
+    .stat(p)
+    .then(() => true)
+    .catch(() => false);
+}
+
+/**
+ * Move `from` para `to`. Se `to` já existe (migração anterior parcial, cópia
+ * manual…), NÃO sobrescreve: renomeia a origem legada para um caminho de backup
+ * com timestamp e avisa. `rename` sobre destino existente falharia com
+ * ENOTEMPTY/EEXIST e derrubaria o boot do servidor sem recuperação pela UI.
+ */
+async function moveLegacyPath(from: string, to: string): Promise<void> {
+  if (await pathExists(to)) {
+    const backup = `${from}.legacy-${Date.now()}`;
+    await fs.rename(from, backup);
+    console.warn(
+      `[localdrawdb] Dados legados duplicados: "${to}" já existe, então "${from}" NÃO foi movido. ` +
+        `O legado foi preservado em "${backup}" — nada foi sobrescrito. Inspecione e remova manualmente.`,
+    );
+    return;
+  }
+  await fs.rename(from, to);
+}
+
 /**
  * Migra o layout legado (data/projects/ + data/projects.json direto em
  * data/) para data/domains/local/. Idempotente: se data/domains.json já
  * existe, não faz nada. Numa instalação limpa (nada em disco), ainda cria
  * o domínio "local" vazio para a tela de escolha nunca ficar sem opções.
+ *
+ * Nunca sobrescreve dados: colisão vira backup `.legacy-<timestamp>`.
  */
 export async function migrateLegacyDomains(): Promise<void> {
-  const alreadyMigrated = await fs
-    .stat(domainsRegistryPath())
-    .then(() => true)
-    .catch(() => false);
-  if (alreadyMigrated) return;
-
-  await ensureDir(domainsRootDir());
-  const localDir = domainDirFor('local');
-  await ensureDir(localDir);
-
   const legacyProjectsDir = path.join(baseDataDir(), 'projects');
   const legacyRegistryPath = path.join(baseDataDir(), 'projects.json');
+  let currentPath = baseDataDir();
 
-  const legacyProjectsExist = await fs
-    .stat(legacyProjectsDir)
-    .then((s) => s.isDirectory())
-    .catch(() => false);
-  if (legacyProjectsExist) {
-    await fs.rename(legacyProjectsDir, path.join(localDir, 'projects'));
+  try {
+    const alreadyMigrated = await pathExists(domainsRegistryPath());
+    if (alreadyMigrated) return;
+
+    await ensureDir(domainsRootDir());
+    const localDir = domainDirFor('local');
+    await ensureDir(localDir);
+
+    const legacyProjectsExist = await fs
+      .stat(legacyProjectsDir)
+      .then((s) => s.isDirectory())
+      .catch(() => false);
+    if (legacyProjectsExist) {
+      currentPath = legacyProjectsDir;
+      await moveLegacyPath(legacyProjectsDir, path.join(localDir, 'projects'));
+    }
+
+    if (await pathExists(legacyRegistryPath)) {
+      currentPath = legacyRegistryPath;
+      await moveLegacyPath(legacyRegistryPath, path.join(localDir, 'projects.json'));
+    }
+
+    currentPath = domainsRegistryPath();
+    await registerDomain('Local', 'local');
+  } catch (err) {
+    throw new Error(
+      `Falha ao migrar dados legados em "${currentPath}": ${(err as Error).message}. ` +
+        `Inspecione manualmente esse caminho (nada foi sobrescrito) antes de tentar de novo.`,
+      { cause: err },
+    );
   }
-
-  const legacyRegistryExists = await fs
-    .stat(legacyRegistryPath)
-    .then(() => true)
-    .catch(() => false);
-  if (legacyRegistryExists) {
-    await fs.rename(legacyRegistryPath, path.join(localDir, 'projects.json'));
-  }
-
-  await registerDomain('Local', 'local');
 }

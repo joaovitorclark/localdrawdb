@@ -51,6 +51,15 @@ describe('domainContext', () => {
     expect(getActiveDomainSlug()).toBe('acme');
   });
 
+  it('clear explícito (setActiveDomainSlug(null)) NÃO volta a cair no pin de env', async () => {
+    process.env.LOCALDRAWDB_DOMAIN = 'beta';
+    const { setActiveDomainSlug, getActiveDomainSlug } = await import('../domainContext.ts');
+    setActiveDomainSlug('acme');
+    expect(getActiveDomainSlug()).toBe('acme');
+    setActiveDomainSlug(null); // POST /api/context/clear
+    expect(getActiveDomainSlug()).toBeNull();
+  });
+
   it('activeDomainDir lança erro claro quando nenhum domínio está ativo', async () => {
     const { activeDomainDir } = await import('../domainContext.ts');
     expect(() => activeDomainDir()).toThrow(/domínio ativo/i);

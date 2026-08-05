@@ -23,7 +23,10 @@ export function domainDirFor(slug: string): string {
   return path.join(domainsRootDir(), slug);
 }
 
-let activeDomainSlug: string | null = null;
+// Três estados: `undefined` = nunca setado explicitamente (cai no pin de env);
+// `null` = limpo explicitamente (clearContext — não volta a cair no pin, senão o
+// clear seria no-op numa instância com LOCALDRAWDB_DOMAIN); string = ativo.
+let activeDomainSlug: string | null | undefined = undefined;
 
 /** Define o domínio ativo do processo (contexto em memória — não persiste em disco). */
 export function setActiveDomainSlug(slug: string | null): void {
@@ -32,8 +35,9 @@ export function setActiveDomainSlug(slug: string | null): void {
 
 /** Domínio ativo: memória (setActiveDomainSlug) > LOCALDRAWDB_DOMAIN (pin de processo) > null. */
 export function getActiveDomainSlug(): string | null {
+  if (activeDomainSlug !== undefined) return activeDomainSlug;
   const pinned = process.env.LOCALDRAWDB_DOMAIN?.trim();
-  return activeDomainSlug ?? (pinned || null);
+  return pinned || null;
 }
 
 /** Diretório do domínio ativo. Lança erro se nenhum domínio estiver ativo. */

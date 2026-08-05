@@ -383,10 +383,19 @@ export async function setActiveProject(id: string): Promise<void> {
   await writeRegistry(reg);
 }
 
-/** Slug fixado por processo (LOCALDRAWDB_PROJECT), validado, ou null. */
+/**
+ * Slug fixado por processo (LOCALDRAWDB_PROJECT), validado, ou null.
+ *
+ * O pin de projeto só vale para o domínio ao qual ele foi fixado
+ * (LOCALDRAWDB_DOMAIN). Se o usuário trocou de domínio pela tela de escolha, o
+ * pin deixa de se aplicar e retorna `null` — validar contra o registry do outro
+ * domínio lançaria um erro que vira 500 cru e trava a tela de escolha.
+ */
 export async function pinnedSlug(): Promise<string | null> {
   const slug = process.env.LOCALDRAWDB_PROJECT?.trim();
   if (!slug) return null;
+  const pinnedDomain = process.env.LOCALDRAWDB_DOMAIN?.trim();
+  if (pinnedDomain && getActiveDomainSlug() !== pinnedDomain) return null;
   const reg = await readRegistry();
   if (!reg.projects.some((p) => p.slug === slug)) {
     throw new Error(`LOCALDRAWDB_PROJECT="${slug}" não existe no registry`);

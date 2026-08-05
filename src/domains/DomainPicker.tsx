@@ -16,6 +16,8 @@ export function DomainPicker({ onOpened }: { onOpened: (domain: DomainMeta) => v
   const [newDomainName, setNewDomainName] = useState('');
   const [newDomainUrl, setNewDomainUrl] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [attachUrl, setAttachUrl] = useState('');
 
   const refreshDomains = useCallback(async () => {
     try {
@@ -83,6 +85,25 @@ export function DomainPicker({ onOpened }: { onOpened: (domain: DomainMeta) => v
       setError((e as Error).message);
     }
   }, [newDomainMode, newDomainName, newDomainUrl, refreshDomains]);
+
+  /**
+   * Versiona um domínio local (git init + remote opcional). O `DomainMeta`
+   * retornado já vem com `hasGit: true`, então substituir o `selectedDomain`
+   * atualiza a badge na hora e faz `openProject` abrir a versão correta.
+   */
+  const handleAttachGit = useCallback(async () => {
+    if (!selectedDomain) return;
+    setError(null);
+    try {
+      const updated = await api.attachGitToDomain(selectedDomain.id, attachUrl.trim() || undefined);
+      setSelectedDomain(updated);
+      setDomains((list) => list.map((d) => (d.id === updated.id ? updated : d)));
+      setAttachOpen(false);
+      setAttachUrl('');
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    }
+  }, [selectedDomain, attachUrl]);
 
   const handleCreateProject = useCallback(async () => {
     if (!newProjectName.trim()) return;
@@ -160,6 +181,24 @@ export function DomainPicker({ onOpened }: { onOpened: (domain: DomainMeta) => v
             </span>{' '}
             {selectedDomain.name}
           </h2>
+          {!selectedDomain.hasGit &&
+            (attachOpen ? (
+              <div className="domain-picker__new-form">
+                <input
+                  placeholder="URL do remote (opcional — https ou ssh)"
+                  value={attachUrl}
+                  onChange={(e) => setAttachUrl(e.target.value)}
+                />
+                <button onClick={() => void handleAttachGit()}>Confirmar</button>
+                <button onClick={() => setAttachOpen(false)}>Cancelar</button>
+              </div>
+            ) : (
+              <div className="domain-picker__new-actions">
+                <button onClick={() => setAttachOpen(true)} title="Versionar este domínio com git">
+                  Anexar repositório
+                </button>
+              </div>
+            ))}
           {projects.map((p) => (
             <button
               key={p.id}

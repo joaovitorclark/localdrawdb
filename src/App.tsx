@@ -174,9 +174,11 @@ function applyRenames(
 export default function App({
   domain,
   onBackToDomains,
+  onRepoChanged,
 }: {
   domain: DomainMeta;
   onBackToDomains: () => void;
+  onRepoChanged?: () => void;
 }) {
   const [dbml, setDbml] = useState('');
   const [positions, setPositions] = useState<Positions>({});
@@ -1601,7 +1603,7 @@ const actions = useMemo<CanvasActions>(
             pinnedLabel={pinnedProjectId ? projects.find((p) => p.id === pinnedProjectId)?.name : undefined}
           />
         )}
-        {domain.hasGit && <GitPanel domain={domain} />}
+        {domain.hasGit && <GitPanel domain={domain} onRepoChanged={onRepoChanged} />}
         <Tooltip label="Desfazer (Cmd/Ctrl+Z)">
           <button onClick={undo} disabled={!past.length} aria-label="Desfazer">
             <Undo className="icon-inline" />
