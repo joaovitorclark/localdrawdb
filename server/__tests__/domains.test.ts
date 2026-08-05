@@ -57,11 +57,20 @@ describe('activateDomain', () => {
   // Isso depende do rewire de `files.ts:getDataDir()` para resolver pelo
   // domínio ativo, que é escopo da Task 5 — hoje `ensureRegistry()` ainda
   // grava no layout plano (`<base>/projects.json`). O que a Task 4 controla é
-  // ativar o slug e delegar a `ensureRegistry()`; o destino do arquivo é
-  // asseverado por `filesActiveDomain.test.ts` (Task 5).
+  // ativar o slug ANTES de delegar a `ensureRegistry()`, para que o registry
+  // nasça no domínio certo assim que `files.ts` for religado; por isso o teste
+  // captura o slug ativo no instante da chamada (ordem), não só a contagem.
   it('ativa o domínio e garante o registry de projetos dele', async () => {
     const filesActual = await vi.importActual<typeof import('../files.ts')>('../files.ts');
-    const ensureRegistrySpy = vi.fn(filesActual.ensureRegistry);
+    const { getActiveDomainSlug } = await import('../domainContext.ts');
+
+    let slugAtEnsureRegistry: string | null | undefined;
+    let ensureRegistryCalls = 0;
+    const ensureRegistrySpy = vi.fn(async () => {
+      ensureRegistryCalls += 1;
+      slugAtEnsureRegistry = getActiveDomainSlug();
+      return filesActual.ensureRegistry();
+    });
     vi.doMock('../files.ts', () => ({ ...filesActual, ensureRegistry: ensureRegistrySpy }));
 
     try {
@@ -69,10 +78,13 @@ describe('activateDomain', () => {
       const d = await createLocalDomain('Alpha');
       await activateDomain(d.id);
 
-      const { getActiveDomainSlug } = await import('../domainContext.ts');
       expect(getActiveDomainSlug()).toBe('alpha');
 
-      expect(ensureRegistrySpy).toHaveBeenCalledTimes(1);
+      // O registry precisa ser garantido JÁ com o domínio ativo — se
+      // `ensureRegistry()` rodar antes de `setActiveDomainSlug()`, o arquivo
+      // nasceria no domínio errado.
+      expect(ensureRegistryCalls).toBe(1);
+      expect(slugAtEnsureRegistry).toBe(d.slug);
 
       const meta = await getDomain(d.id);
       expect(meta.id).toBe(d.id);
