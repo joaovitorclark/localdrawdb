@@ -1,0 +1,146 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+
+let tmpDir: string;
+
+beforeEach(async () => {
+  tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'localdrawdb-domains-'));
+  process.env.LOCALDRAWDB_DATA_DIR = tmpDir;
+  vi.resetModules();
+});
+
+afterEach(async () => {
+  delete process.env.LOCALDRAWDB_DATA_DIR;
+  delete process.env.LOCALDRAWDB_DOMAIN;
+  vi.resetModules();
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+describe('createLocalDomain / listDomains', () => {
+  it('cria domínio local (sem git) com slug único', async () => {
+    const { createLocalDomain, listDomains } = await import('../domains.ts');
+    const d1 = await createLocalDomain('Vendas');
+    expect(d1.slug).toBe('vendas');
+    expect(d1.hasGit).toBe(false);
+    expect(d1.remoteUrl).toBeNull();
+
+    const dirExists = await fs.stat(d1.dir).then((s) => s.isDirectory()).catch(() => false);
+    expect(dirExists).toBe(true);
+
+    const all = await listDomains();
+    expect(all.map((d) => d.id)).toContain(d1.id);
+  });
+
+  it('gera slug sem conflito com sufixo numérico', async () => {
+    const { createLocalDomain } = await import('../domains.ts');
+    const a = await createLocalDomain('Time A');
+    const b = await createLocalDomain('Time A');
+    expect(a.slug).toBe('time-a');
+    expect(b.slug).toBe('time-a-2');
+  });
+});
+
+describe('attachGitToDomain', () => {
+  it('promove domínio local a git (init) sem remote', async () => {
+    const { createLocalDomain, attachGitToDomain } = await import('../domains.ts');
+    const d = await createLocalDomain('Local Puro');
+    const updated = await attachGitToDomain(d.id);
+    expect(updated.hasGit).toBe(true);
+    expect(updated.remoteUrl).toBeNull();
+  });
+});
+
+describe('activateDomain', () => {
+  // O brief pedia para conferir que `projects.json` nasce dentro de `d.dir`.
+  // Isso depende do rewire de `files.ts:getDataDir()` para resolver pelo
+  // domínio ativo, que é escopo da Task 5 — hoje `ensureRegistry()` ainda
+  // grava no layout plano (`<base>/projects.json`). O que a Task 4 controla é
+  // ativar o slug e delegar a `ensureRegistry()`; o destino do arquivo é
+  // asseverado por `filesActiveDomain.test.ts` (Task 5).
+  it('ativa o domínio e garante o registry de projetos dele', async () => {
+    const filesActual = await vi.importActual<typeof import('../files.ts')>('../files.ts');
+    const ensureRegistrySpy = vi.fn(filesActual.ensureRegistry);
+    vi.doMock('../files.ts', () => ({ ...filesActual, ensureRegistry: ensureRegistrySpy }));
+
+    try {
+      const { createLocalDomain, activateDomain, getDomain } = await import('../domains.ts');
+      const d = await createLocalDomain('Alpha');
+      await activateDomain(d.id);
+
+      const { getActiveDomainSlug } = await import('../domainContext.ts');
+      expect(getActiveDomainSlug()).toBe('alpha');
+
+      expect(ensureRegistrySpy).toHaveBeenCalledTimes(1);
+
+      const meta = await getDomain(d.id);
+      expect(meta.id).toBe(d.id);
+    } finally {
+      vi.doUnmock('../files.ts');
+    }
+  });
+});
+
+describe('getDomain', () => {
+  it('lança erro para id inexistente', async () => {
+    const { getDomain } = await import('../domains.ts');
+    await expect(getDomain('nao-existe')).rejects.toThrow(/não encontrado/i);
+  });
+});
+
+describe('migrateLegacyDomains', () => {
+  it('move data/projects/ + data/projects.json legados para data/domains/local/', async () => {
+    await fs.mkdir(path.join(tmpDir, 'projects', 'default'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'projects', 'default', 'project.dbml'), 'Table t { id int }', 'utf8');
+    await fs.writeFile(
+      path.join(tmpDir, 'projects.json'),
+      JSON.stringify({ activeId: 'x', projects: [{ id: 'x', name: 'default', slug: 'default', createdAt: '', updatedAt: '' }] }),
+      'utf8',
+    );
+
+    const { migrateLegacyDomains, listDomains } = await import('../domains.ts');
+    await migrateLegacyDomains();
+
+    const domains = await listDomains();
+    expect(domains).toHaveLength(1);
+    expect(domains[0].slug).toBe('local');
+
+    const movedDbml = await fs.readFile(
+      path.join(tmpDir, 'domains', 'local', 'projects', 'default', 'project.dbml'),
+      'utf8',
+    );
+    expect(movedDbml).toBe('Table t { id int }');
+
+    const oldProjectsExists = await fs.stat(path.join(tmpDir, 'projects')).then(() => true).catch(() => false);
+    expect(oldProjectsExists).toBe(false);
+  });
+
+  it('instalação limpa (nada em disco): ainda cria o domínio local vazio', async () => {
+    const { migrateLegacyDomains, listDomains } = await import('../domains.ts');
+    await migrateLegacyDomains();
+
+    const domains = await listDomains();
+    expect(domains).toHaveLength(1);
+    expect(domains[0].slug).toBe('local');
+    expect(domains[0].hasGit).toBe(false);
+  });
+
+  it('é idempotente: segunda chamada não duplica domínios', async () => {
+    const { migrateLegacyDomains, listDomains } = await import('../domains.ts');
+    await migrateLegacyDomains();
+    await migrateLegacyDomains();
+
+    const domains = await listDomains();
+    expect(domains).toHaveLength(1);
+  });
+
+  it('não sobrescreve domínios já registrados manualmente', async () => {
+    const { migrateLegacyDomains, createLocalDomain, listDomains } = await import('../domains.ts');
+    await createLocalDomain('Já Existia');
+    await migrateLegacyDomains();
+
+    const domains = await listDomains();
+    expect(domains.map((d) => d.name)).toEqual(['Já Existia']);
+  });
+});
