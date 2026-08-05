@@ -112,6 +112,7 @@ async function startInstance({ slug, apiPort, webPort }) {
     PORT: String(apiPort),
     API_PORT: String(apiPort),
     VITE_PORT: String(webPort),
+    LOCALDRAWDB_DOMAIN: 'local',
     ...(slug ? { LOCALDRAWDB_PROJECT: slug } : {}),
   };
 
@@ -144,6 +145,7 @@ function startPreviewInstance({ slug, port }) {
     ...process.env,
     NODE_ENV: 'production',
     PORT: String(port),
+    LOCALDRAWDB_DOMAIN: 'local',
     ...(slug ? { LOCALDRAWDB_PROJECT: slug } : {}),
   };
   const server = spawn(process.execPath, [TSX_CLI, 'server/index.ts'], {

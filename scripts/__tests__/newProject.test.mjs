@@ -10,6 +10,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const NEW_SCRIPT = path.join(ROOT, 'scripts', 'newProject.mjs');
 
 let tmpDir;
+
+/** O CLI opera dentro do domínio "local": <dataDir>/domains/local/. */
+const localPath = (...parts) => path.join(tmpDir, 'domains', 'local', ...parts);
+
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'localdrawdb-new-'));
 });
@@ -20,10 +24,10 @@ afterEach(async () => {
 describe('createProjectCli', () => {
   it('cria o projeto no dataDir informado', async () => {
     createProjectCli('Meu Projeto', tmpDir);
-    const reg = JSON.parse(await fs.readFile(path.join(tmpDir, 'projects.json'), 'utf8'));
+    const reg = JSON.parse(await fs.readFile(localPath('projects.json'), 'utf8'));
     expect(reg.projects.some((p) => p.slug === 'meu-projeto')).toBe(true);
     const dirExists = await fs
-      .stat(path.join(tmpDir, 'projects', 'meu-projeto'))
+      .stat(localPath('projects', 'meu-projeto'))
       .then(() => true)
       .catch(() => false);
     expect(dirExists).toBe(true);
@@ -45,7 +49,7 @@ describe('npm run new (scripts/newProject.mjs)', () => {
       encoding: 'utf8',
     });
     expect(res.status).toBe(0);
-    const reg = JSON.parse(await fs.readFile(path.join(tmpDir, 'projects.json'), 'utf8'));
+    const reg = JSON.parse(await fs.readFile(localPath('projects.json'), 'utf8'));
     expect(reg.projects.some((p) => p.slug === 'vendas-rh')).toBe(true);
   });
 });
