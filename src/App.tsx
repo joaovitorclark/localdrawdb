@@ -44,6 +44,7 @@ import {
 import { ExportMenu } from './ExportMenu';
 import { DbmlDiff } from './components/DbmlDiff';
 import { ProjectSwitcher } from './ProjectSwitcher';
+import { GitPanel } from './domains/GitPanel';
 import { Undo, Redo, Search } from './icons';
 import { Tooltip } from './Tooltip';
 import { pinnedCreatedMessage } from './projectMessages';
@@ -53,7 +54,7 @@ import { buildCommands, type CommandAction } from './palette/registry';
 import { ShortcutsOverlay } from './help/ShortcutsOverlay';
 import { CANVAS_GESTURES, shortcutsFromCommands } from './help/gestures';
 import * as api from './api';
-import type { CanvasPage, LineageLink, ProjectMeta, TableSize } from './api';
+import type { CanvasPage, DomainMeta, LineageLink, ProjectMeta, TableSize } from './api';
 
 type Positions = Record<string, { x: number; y: number }>;
 type Colors = Record<string, string>;
@@ -170,7 +171,13 @@ function applyRenames(
   return { dbml: out, appliedRefCount };
 }
 
-export default function App() {
+export default function App({
+  domain,
+  onBackToDomains,
+}: {
+  domain: DomainMeta;
+  onBackToDomains: () => void;
+}) {
   const [dbml, setDbml] = useState('');
   const [positions, setPositions] = useState<Positions>({});
   const [sizes, setSizes] = useState<Record<string, TableSize>>({});
@@ -1370,6 +1377,34 @@ const actions = useMemo<CanvasActions>(
     [currentProjectId, switchProject],
   );
 
+  // Sair para a tela de escolha de domínios: salva o projeto atual antes (mesmo
+  // contrato de switchProject), mas nunca bloqueia a saída se o save falhar.
+  const handleBackToDomains = useCallback(async () => {
+    if (currentProjectId) {
+      try {
+        await api.saveProjectById(currentProjectId, dbml, {
+          positions,
+          colors,
+          collapsedGroups,
+          pages: canvasPages,
+          activePageIds,
+        });
+      } catch {
+        // ignora erros de save ao sair — não bloqueia a saída
+      }
+    }
+    onBackToDomains();
+  }, [
+    currentProjectId,
+    dbml,
+    positions,
+    colors,
+    collapsedGroups,
+    canvasPages,
+    activePageIds,
+    onBackToDomains,
+  ]);
+
   const handleExportOption = (opt: api.ExportOption) => {
     run(`Exportando ${opt.label}`, async () => {
       const result = await api.exportFormat(dbml, opt.format, opt.dialect);
@@ -1544,6 +1579,15 @@ const actions = useMemo<CanvasActions>(
     <div className="app">
       <header className="toolbar">
         <strong className="brand">LocalDrawDB</strong>
+        <Tooltip label="Voltar à tela de escolha de projetos">
+          <button
+            onClick={() => void handleBackToDomains()}
+            aria-label="Voltar aos domínios"
+            className="back-to-domains-btn"
+          >
+            ← Domínios
+          </button>
+        </Tooltip>
         {projects.length > 0 && (
           <ProjectSwitcher
             projects={projects}
@@ -1557,6 +1601,7 @@ const actions = useMemo<CanvasActions>(
             pinnedLabel={pinnedProjectId ? projects.find((p) => p.id === pinnedProjectId)?.name : undefined}
           />
         )}
+        {domain.hasGit && <GitPanel domain={domain} />}
         <Tooltip label="Desfazer (Cmd/Ctrl+Z)">
           <button onClick={undo} disabled={!past.length} aria-label="Desfazer">
             <Undo className="icon-inline" />
