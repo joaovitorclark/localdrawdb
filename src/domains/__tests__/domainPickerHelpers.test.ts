@@ -24,11 +24,11 @@ describe('sortDomainsByName', () => {
 });
 
 describe('domainBadge', () => {
-  it('🔒 Local para domínio sem git', () => {
-    expect(domainBadge(makeDomain({ hasGit: false }))).toBe('🔒 Local');
+  it('Local para domínio sem git', () => {
+    expect(domainBadge(makeDomain({ hasGit: false }))).toBe('Local');
   });
 
-  it('🌿 Git para domínio com git', () => {
-    expect(domainBadge(makeDomain({ hasGit: true }))).toBe('🌿 Git');
+  it('Git para domínio com git', () => {
+    expect(domainBadge(makeDomain({ hasGit: true }))).toBe('Git');
   });
 });

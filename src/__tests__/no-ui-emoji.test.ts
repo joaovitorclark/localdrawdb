@@ -18,6 +18,8 @@ const FILES = [
   'src/canvas/ExternalGroupNode.tsx',
   'src/ExportMenu.tsx',
   'src/editor/Outline.tsx',
+  'src/domains/DomainPicker.tsx',
+  'src/domains/domainPickerHelpers.ts',
 ];
 
 const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F000}-\u{1F02F}]/u;

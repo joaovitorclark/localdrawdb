@@ -115,7 +115,11 @@ export function DomainPicker({ onOpened }: { onOpened: (domain: DomainMeta) => v
           <h2>Escolha um domínio</h2>
           {sortDomainsByName(domains).map((d) => (
             <button key={d.id} className="domain-picker__item" onClick={() => void openDomain(d)}>
-              <span className="domain-picker__badge">{domainBadge(d)}</span>
+              <span
+                className={`domain-picker__badge domain-picker__badge--${d.hasGit ? 'git' : 'local'}`}
+              >
+                {domainBadge(d)}
+              </span>
               <span className="domain-picker__name">{d.name}</span>
             </button>
           ))}
@@ -149,7 +153,12 @@ export function DomainPicker({ onOpened }: { onOpened: (domain: DomainMeta) => v
       {view === 'projects' && selectedDomain && (
         <section className="domain-picker__list">
           <h2>
-            {domainBadge(selectedDomain)} {selectedDomain.name}
+            <span
+              className={`domain-picker__badge domain-picker__badge--${selectedDomain.hasGit ? 'git' : 'local'}`}
+            >
+              {domainBadge(selectedDomain)}
+            </span>{' '}
+            {selectedDomain.name}
           </h2>
           {projects.map((p) => (
             <button

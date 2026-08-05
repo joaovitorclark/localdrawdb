@@ -5,5 +5,5 @@ export function sortDomainsByName(domains: DomainMeta[]): DomainMeta[] {
 }
 
 export function domainBadge(domain: DomainMeta): string {
-  return domain.hasGit ? '🌿 Git' : '🔒 Local';
+  return domain.hasGit ? 'Git' : 'Local';
 }

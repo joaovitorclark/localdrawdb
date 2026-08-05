@@ -2955,6 +2955,27 @@ body {
   background: var(--hover-bg, #f3f3f3);
 }
 
+.domain-picker__badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.domain-picker__badge--git {
+  border-color: #2f855a;
+  color: #2f855a;
+}
+
+.domain-picker__badge--local {
+  border-color: var(--border, #999);
+  color: var(--muted, #777);
+}
+
 .domain-picker__new-actions,
 .domain-picker__new-form {
   display: flex;
