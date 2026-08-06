@@ -21,6 +21,7 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:web": "vite",
     "build": "vite build",
+    "build:win": "node scripts/build-win/build.mjs",
     "start": "cross-env NODE_ENV=production tsx server/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -44,6 +45,7 @@
     "@types/react-dom": "^18.3.0",
     "@uiw/react-codemirror": "^4.23.5",
     "@vitejs/plugin-react": "^4.3.2",
+    "archiver": "^8.0.0",
     "concurrently": "^9.0.1",
     "cross-env": "^7.0.3",
     "esbuild": "^0.28.0",
