@@ -51,9 +51,14 @@ export async function buildExeLauncher({ outDir, nodeExePath, execImpl = execFil
   const exePath = path.join(outDir, 'LocalDrawDB.exe');
   await fs.copyFile(nodeExePath, exePath);
 
-  // 5) Injeta o blob com postject.
-  const postjectBin = path.join(HERE, '..', '..', 'node_modules', '.bin', 'postject');
-  await execImpl(postjectBin, [
+  // 5) Injeta o blob com postject. Aponta direto pro cli.js e roda com o Node
+  //    atual (process.execPath) em vez de usar node_modules/.bin/postject: em
+  //    host Windows esse caminho é um shim .cmd/.ps1, que execFile sem shell
+  //    não executa — mesma classe de problema que NPM_BIN/NPX_BIN resolveram em
+  //    bundleServer.mjs. Assim não depende de shim em SO nenhum.
+  const postjectCli = path.join(HERE, '..', '..', 'node_modules', 'postject', 'dist', 'cli.js');
+  await execImpl(process.execPath, [
+    postjectCli,
     exePath,
     'NODE_SEA_BLOB',
     blobPath,
