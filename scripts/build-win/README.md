@@ -10,6 +10,18 @@ Roda a partir de macOS/Linux/Windows: o `.exe` é montado com Node SEA +
 `postject`, que só manipula o formato binário PE — não precisa executar o
 `.exe` na máquina de build.
 
+**Risco conhecido ao buildar a partir de macOS/Linux:** o blob do SEA é
+acoplado à versão exata do Node que o gera; injetá-lo num `node.exe` de
+outra versão crasha ao abrir (`STATUS_ACCESS_VIOLATION`), sem nenhuma
+mensagem. Em host **Windows**, o build gera o blob com o próprio Node
+portátil pinado (`NODE_VERSION` em `fetchNode.mjs`), então as versões
+sempre batem. Em host **macOS/Linux** isso não é possível — o Node
+portátil é um binário win32 — e o blob é gerado com o Node do host, que
+pode divergir do pinado. Mitigação: rode o build com a mesma versão major.minor.patch
+pinada em `fetchNode.mjs` instalada localmente (`nvm use` com essa versão)
+até existir automação que baixe um Node do host na versão certa só para
+gerar o blob.
+
 ## CI (windows-latest)
 
 `.github/workflows/build-win-check.yml` roda o build real numa VM Windows

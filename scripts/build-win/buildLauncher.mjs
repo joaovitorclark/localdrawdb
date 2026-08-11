@@ -44,8 +44,19 @@ export async function buildExeLauncher({ outDir, nodeExePath, execImpl = execFil
     ),
   );
 
-  // 3) Gera o blob.
-  await execImpl(process.execPath, ['--experimental-sea-config', seaConfigPath]);
+  // 3) Gera o blob. O blob do SEA é acoplado à versão exata do Node que o
+  //    gera — injetá-lo num node.exe de outra versão crasha ao abrir com
+  //    STATUS_ACCESS_VIOLATION (0xC0000005) e nenhuma saída em stdout/stderr
+  //    (visto rodando de verdade em windows-latest via CI: o builder tinha
+  //    Node 22.23.2 do setup-node, mas nodeExePath é o portátil pinado em
+  //    22.11.0 — versões diferentes). Em host Windows, gerar o blob com o
+  //    PRÓPRIO nodeExePath (a versão que vai receber a injeção) elimina esse
+  //    descompasso. Em host macOS/Linux (cross-build do pacote Windows) isso
+  //    não é possível — nodeExePath é um binário win32 que não roda ali —
+  //    então cai para process.execPath, aceitando o mesmo risco de
+  //    descompasso de versão nesse caminho (documentado no README).
+  const seaGeneratorNode = process.platform === 'win32' ? nodeExePath : process.execPath;
+  await execImpl(seaGeneratorNode, ['--experimental-sea-config', seaConfigPath]);
 
   // 4) Copia o node.exe base pro nome final.
   const exePath = path.join(outDir, 'LocalDrawDB.exe');
