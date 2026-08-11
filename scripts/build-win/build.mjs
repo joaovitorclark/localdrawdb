@@ -3,7 +3,7 @@
 // dist-win/LocalDrawDB-win.zip.
 import { promises as fs, createWriteStream } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // archiver >= 8 é ESM nativo e não exporta mais a factory default `archiver()`:
 // o formato vira uma classe (`ZipArchive`), com o mesmo `pipe`/`directory`/`finalize`.
 import { ZipArchive } from 'archiver';
@@ -78,7 +78,13 @@ export async function buildWindowsPackage({
 }
 
 // Permite `node scripts/build-win/build.mjs` direto, além de `npm run build:win`.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// pathToFileURL (não um template `file://` cru) é obrigatório aqui: no Windows
+// process.argv[1] vem com `\` e sem o `/` inicial antes da letra da unidade
+// (`D:\a\...`), então `file://${process.argv[1]}` nunca bate com o
+// import.meta.url real (`file:///D:/a/...`) — o guard silenciosamente nunca
+// entrava, e `npm run build:win` rodado a partir do próprio Windows saía com
+// código 0 sem gerar o zip e sem nenhuma mensagem de erro.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const startedAt = Date.now();
   buildWindowsPackage()
     .then(async (zipPath) => {
