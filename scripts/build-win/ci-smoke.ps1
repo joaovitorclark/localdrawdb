@@ -17,7 +17,7 @@ param(
     [Parameter(Mandatory = $true)][string]$PackageDir,
     [switch]$StripGit,
     [bool]$ExpectGitAvailable = $true,
-    [int]$TimeoutSeconds = 30
+    [int]$TimeoutSeconds = 60
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,13 +35,25 @@ if ($StripGit) {
 
 $before = @(Get-Process node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
 
+# stdio: 'inherit' no launcher não vai a lugar nenhum sob -WindowStyle Hidden
+# sem redirecionar explicitamente — sem isso, uma falha de boot vira só um
+# timeout mudo. Os logs viram artefato do job em caso de falha.
+$stdoutLog = Join-Path $env:RUNNER_TEMP "$(Split-Path $PackageDir -Leaf)-stdout.log"
+$stderrLog = Join-Path $env:RUNNER_TEMP "$(Split-Path $PackageDir -Leaf)-stderr.log"
+
 Write-Host "Iniciando $exePath ..."
-$proc = Start-Process -FilePath $exePath -PassThru -WindowStyle Hidden
+$proc = Start-Process -FilePath $exePath -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
 
 $meta = $null
 $foundPort = $null
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 while ((Get-Date) -lt $deadline -and -not $meta) {
+    if ($proc.HasExited) {
+        Write-Host "--- stdout ---"; Get-Content $stdoutLog -ErrorAction SilentlyContinue
+        Write-Host "--- stderr ---"; Get-Content $stderrLog -ErrorAction SilentlyContinue
+        throw "LocalDrawDB.exe encerrou sozinho (código $($proc.ExitCode)) antes de responder — ver stdout/stderr acima."
+    }
     foreach ($port in 5174..5199) {
         try {
             $meta = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/meta" -TimeoutSec 1 -ErrorAction Stop
@@ -55,6 +67,8 @@ while ((Get-Date) -lt $deadline -and -not $meta) {
 }
 
 if (-not $meta) {
+    Write-Host "--- stdout ---"; Get-Content $stdoutLog -ErrorAction SilentlyContinue
+    Write-Host "--- stderr ---"; Get-Content $stderrLog -ErrorAction SilentlyContinue
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
     throw "LocalDrawDB não respondeu em /api/meta dentro de ${TimeoutSeconds}s (portas 5174-5199, sem elevação/UAC solicitada)"
 }
