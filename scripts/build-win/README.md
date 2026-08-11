@@ -22,6 +22,16 @@ pinada em `fetchNode.mjs` instalada localmente (`nvm use` com essa versão)
 até existir automação que baixe um Node do host na versão certa só para
 gerar o blob.
 
+## Distribuição — como o usuário final chega no `.exe`
+
+`dist-win/` é gitignored: clonar/baixar o repositório **não** dá acesso ao
+`.exe`. O caminho pra usuário final é `.github/workflows/release-win.yml` —
+builda, roda o smoke test, e publica `LocalDrawDB-win.zip` como asset de uma
+GitHub Release (aba "Releases" do repositório). Dispara automaticamente ao
+empurrar uma tag `v*`, ou manualmente via "Run workflow" (aba Actions)
+informando a tag. Quem só quer usar o app baixa o zip na página de
+Releases — sem git, sem npm, sem clonar nada.
+
 ## CI (windows-latest)
 
 `.github/workflows/build-win-check.yml` roda o build real numa VM Windows

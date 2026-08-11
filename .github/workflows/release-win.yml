@@ -1,0 +1,73 @@
+name: release-win
+
+# Publica dist-win/LocalDrawDB-win.zip como asset de uma GitHub Release —
+# é a única forma de um usuário Windows chegar no .exe sem clonar o
+# repositório ou instalar Node/npm. Disparado por tag `v*` (fluxo normal de
+# release) ou manualmente via workflow_dispatch (ex: testar antes de merge).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag da release (cria a tag se ainda não existir, apontando pro commit deste run)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build + smoke test + publicar (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test suite + typecheck
+        run: |
+          npm test
+          npm run typecheck
+
+      - name: Build Windows package
+        run: npm run build:win
+
+      - name: Smoke test antes de publicar
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'pkg-release'
+          Expand-Archive -Path 'dist-win/LocalDrawDB-win.zip' -DestinationPath $dest
+          ./scripts/build-win/ci-smoke.ps1 -PackageDir "$dest\LocalDrawDB-win" -ExpectGitAvailable $true
+
+      - name: Determine tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create ou atualizar a GitHub Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-win/LocalDrawDB-win.zip --clobber
+          else
+            gh release create "$TAG" dist-win/LocalDrawDB-win.zip \
+              --title "LocalDrawDB $TAG (Windows)" \
+              --generate-notes \
+              --target "$GITHUB_SHA"
+          fi
