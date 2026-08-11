@@ -13,14 +13,21 @@ const execFileRaw = promisify(execFileCb);
 // maxBuffer generoso: `npm install` e `vite build` podem imprimir bastante
 // (lista de chunks, warnings) e o default de 1 MB estouraria com ENOBUFS,
 // escondendo o erro real.
-const execFile = (cmd, args, opts) => execFileRaw(cmd, args, { maxBuffer: 64 * 1024 * 1024, ...opts });
+//
+// No Windows, `npm`/`npx` são scripts .cmd. Passar o nome completo
+// (`npm.cmd`) sem `shell: true` NÃO basta — desde a correção da
+// CVE-2024-27980, o Node responde `spawn EINVAL` a qualquer spawn direto de
+// .cmd/.bat (confirmado rodando de verdade em windows-latest via CI). O
+// remédio oficial é `shell: true`: o Node passa o comando pelo cmd.exe
+// aplicando o escaping seguro que a correção da CVE cobre.
+const execFile = (cmd, args, opts) => execFileRaw(cmd, args, {
+  maxBuffer: 64 * 1024 * 1024,
+  shell: process.platform === 'win32',
+  ...opts,
+});
 
-// No Windows, `npm`/`npx` são scripts .cmd; `execFile` sem shell não resolve via
-// PATHEXT e, desde o CVE-2024-27980, o Node se recusa a executar .cmd sem shell
-// explícito. Resolver o nome completo do binário mantém o script funcional num
-// host de desenvolvimento Windows sem precisar de `shell: true`.
-const NPM_BIN = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const NPX_BIN = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const NPM_BIN = 'npm';
+const NPX_BIN = 'npx';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
