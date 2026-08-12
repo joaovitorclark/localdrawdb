@@ -80,7 +80,8 @@ npm run dev -- vendas rh           # só esses
 ## Distribuição Windows (sem instalar Node)
 
 Pra usuários Windows que não querem instalar Node.js: baixe o pacote portátil
-(`LocalDrawDB-win.zip`), extraia numa pasta qualquer e dê duplo-clique em
+(`LocalDrawDB-win.zip`) na [página de Releases](https://github.com/joaovitorclark/localdrawdb/releases/latest),
+extraia numa pasta qualquer e dê duplo-clique em
 `LocalDrawDB.exe` — sem instalador, sem precisar de administrador. Os dados
 ficam na pasta `data/` ao lado do executável, então mover a pasta inteira
 (inclusive pra um pendrive) leva tudo junto.
