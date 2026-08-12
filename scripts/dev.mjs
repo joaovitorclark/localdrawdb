@@ -112,7 +112,10 @@ async function startInstance({ slug, apiPort, webPort }) {
     PORT: String(apiPort),
     API_PORT: String(apiPort),
     VITE_PORT: String(webPort),
-    ...(slug ? { LOCALDRAWDB_PROJECT: slug } : {}),
+    // Pin de projeto (./ldb <slug>) só faz sentido dentro do domínio local, então
+    // os dois andam juntos. Sem slug, NÃO pina domínio: é a tela de escolha
+    // (AppGate/DomainPicker) que decide o domínio ativo.
+    ...(slug ? { LOCALDRAWDB_DOMAIN: 'local', LOCALDRAWDB_PROJECT: slug } : {}),
   };
 
   const nodeArgs = (script, ...args) => [script, ...args];
@@ -144,7 +147,8 @@ function startPreviewInstance({ slug, port }) {
     ...process.env,
     NODE_ENV: 'production',
     PORT: String(port),
-    ...(slug ? { LOCALDRAWDB_PROJECT: slug } : {}),
+    // Mesmo critério de startInstance: pin de domínio só acompanha pin de projeto.
+    ...(slug ? { LOCALDRAWDB_DOMAIN: 'local', LOCALDRAWDB_PROJECT: slug } : {}),
   };
   const server = spawn(process.execPath, [TSX_CLI, 'server/index.ts'], {
     cwd: ROOT, env, stdio: 'inherit',

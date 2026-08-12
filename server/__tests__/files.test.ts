@@ -1,6 +1,17 @@
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DATA_DIR, ROOT } from '../files.ts';
+
+// Este teste sempre operou sobre o data/ real do clone, via o fallback
+// implícito de getDataDir(). Desde que files.ts passou a resolver pelo
+// domínio ativo (exigindo domínio ou override explícito), a intenção
+// precisa ser declarada.
+beforeAll(() => {
+  process.env.LOCALDRAWDB_DATA_DIR = DATA_DIR;
+});
+afterAll(() => {
+  delete process.env.LOCALDRAWDB_DATA_DIR;
+});
 
 describe('files.ts paths', () => {
   it('resolve data/ relativo ao clone (server/..)', () => {

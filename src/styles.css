@@ -2908,3 +2908,186 @@ body {
     border-bottom: none;
   }
 }
+
+/* Domain picker (Spec A) */
+/* Mesmo padrão dos modais claros (ex.: .credentials-wizard): estas telas ficam
+   sobre --canvas-bg (claro), então precisam de cor de texto explícita — senão
+   herdam --text (claro, pensado para fundo escuro) e somem. */
+.domain-picker,
+.app-gate-loading {
+  color: #0f172a;
+}
+
+.domain-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 24px;
+  gap: 16px;
+}
+
+/* Vence o .brand global (color: #fff), que é para a .toolbar de fundo escuro. */
+.domain-picker .brand {
+  color: #0f172a;
+}
+
+.domain-picker__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.domain-picker__back {
+  margin-left: auto;
+}
+
+.domain-picker__error {
+  color: var(--danger, #c0392b);
+}
+
+.domain-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 480px;
+}
+
+.domain-picker__item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.domain-picker__item:hover {
+  background: var(--hover-bg, #f3f3f3);
+}
+
+.domain-picker__badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 999px;
+  font-size: var(--fs-xs, 11px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+
+.domain-picker__badge--git {
+  border-color: var(--brand-green, #2f855a);
+  color: var(--brand-green, #2f855a);
+}
+
+.domain-picker__badge--local {
+  border-color: var(--border, #999);
+  color: var(--muted-on-light, #5a6b85);
+}
+
+.domain-picker__new-actions,
+.domain-picker__new-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.domain-picker__new-form input {
+  flex: 1;
+}
+
+/* Credentials wizard (Spec A) */
+.credentials-wizard__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  background: rgba(9, 14, 25, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.credentials-wizard {
+  width: min(380px, 100%);
+  padding: 20px;
+  /* Mesmo padrão de modal claro do .shortcuts-overlay: fundo branco exige cor de
+     texto explícita, senão herda --text (claro) do body e some no branco. */
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--fs-md, 13px);
+}
+
+.credentials-wizard h3 {
+  margin: 0;
+  font-size: var(--fs-lg, 15px);
+}
+
+.credentials-wizard p {
+  margin: 0;
+  color: var(--muted-on-light, #5a6b85);
+}
+
+.credentials-wizard__link {
+  color: var(--brand-green, #00995d);
+}
+
+.credentials-wizard__error {
+  color: var(--danger, #c0392b);
+}
+
+.credentials-wizard__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Git panel (Spec A) — vive dentro da .toolbar, cujo fundo é escuro (--panel/--brand-navy).
+   Por isso usa --text/--muted (tokens pensados para fundo escuro) e NÃO --muted-on-light,
+   que é para os modais claros (ex.: .credentials-wizard). */
+.git-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  font-size: var(--fs-md, 13px);
+}
+
+.git-panel__branch {
+  font-weight: 600;
+  color: var(--text, #e6edf3);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-panel__summary {
+  color: var(--muted, #9fb0c9);
+  white-space: nowrap;
+}
+
+.git-panel__message {
+  color: var(--muted, #9fb0c9);
+  font-style: italic;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Vermelho puro (--danger) fica escuro demais sobre o navy: usa o tom claro de erro. */
+.git-panel__message--error {
+  color: #fca5a5;
+  font-style: normal;
+}

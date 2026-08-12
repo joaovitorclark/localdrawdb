@@ -1,26 +1,23 @@
 // Acesso ao diretório data/ (input, output, persistência). NUNCA versionado.
-// F0: camada multi-projeto — data/projects/<slug>/
+// Camada de projeto — data/domains/<slug>/projects/<slug>/
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { ROOT, DATA_DIR } from './paths.ts';
+import { getActiveDomainSlug, domainDirFor } from './domainContext.ts';
 
-// ──────────────────────────────────────────────────────────────
-// Raiz do repositório (sempre baseada no local do arquivo, não
-// sobrescrita pelo env — serve de âncora para ROOT).
-// ──────────────────────────────────────────────────────────────
-export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-// DATA_DIR público: pode ser sobrescrito via LOCALDRAWDB_DATA_DIR (usado em testes).
-// Em runtime o valor padrão é ROOT/data.
-export const DATA_DIR = path.join(ROOT, 'data');
+export { ROOT, DATA_DIR };
 
 /**
- * Retorna o diretório de dados efetivo.
- * Em testes, LOCALDRAWDB_DATA_DIR aponta para um tmpdir isolado.
+ * Diretório de dados efetivo: domínio ativo (memória ou LOCALDRAWDB_DOMAIN)
+ * tem prioridade; senão, LOCALDRAWDB_DATA_DIR (compat com testes/legado);
+ * senão, lança erro — nenhuma rota deve chamar isto sem domínio nem override.
  */
 function getDataDir(): string {
-  return process.env.LOCALDRAWDB_DATA_DIR ?? DATA_DIR;
+  const slug = getActiveDomainSlug();
+  if (slug) return domainDirFor(slug);
+  if (process.env.LOCALDRAWDB_DATA_DIR) return process.env.LOCALDRAWDB_DATA_DIR;
+  throw new Error('Nenhum domínio ativo — selecione um projeto na tela de escolha.');
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -122,8 +119,11 @@ export function projectOutputDir(slug: string): string {
 // Registry helpers
 // ──────────────────────────────────────────────────────────────
 export async function readRegistry(): Promise<Registry> {
+  // Resolvido FORA do try: se não há domínio ativo nem override, getDataDir()
+  // lança e o erro deve propagar (não pode ser confundido com "arquivo ausente").
+  const regPath = registryPath();
   try {
-    const raw = await fs.readFile(registryPath(), 'utf8');
+    const raw = await fs.readFile(regPath, 'utf8');
     const reg = JSON.parse(raw) as Registry;
     if (reg.projects?.length) return reg;
   } catch {
@@ -383,10 +383,19 @@ export async function setActiveProject(id: string): Promise<void> {
   await writeRegistry(reg);
 }
 
-/** Slug fixado por processo (LOCALDRAWDB_PROJECT), validado, ou null. */
+/**
+ * Slug fixado por processo (LOCALDRAWDB_PROJECT), validado, ou null.
+ *
+ * O pin de projeto só vale para o domínio ao qual ele foi fixado
+ * (LOCALDRAWDB_DOMAIN). Se o usuário trocou de domínio pela tela de escolha, o
+ * pin deixa de se aplicar e retorna `null` — validar contra o registry do outro
+ * domínio lançaria um erro que vira 500 cru e trava a tela de escolha.
+ */
 export async function pinnedSlug(): Promise<string | null> {
   const slug = process.env.LOCALDRAWDB_PROJECT?.trim();
   if (!slug) return null;
+  const pinnedDomain = process.env.LOCALDRAWDB_DOMAIN?.trim();
+  if (pinnedDomain && getActiveDomainSlug() !== pinnedDomain) return null;
   const reg = await readRegistry();
   if (!reg.projects.some((p) => p.slug === slug)) {
     throw new Error(`LOCALDRAWDB_PROJECT="${slug}" não existe no registry`);

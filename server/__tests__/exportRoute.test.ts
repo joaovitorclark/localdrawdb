@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
 import { registerRoutes } from '../routes.ts';
+import { DATA_DIR } from '../paths.ts';
+
+// Estes testes sempre operaram sobre o data/ real do clone, via o fallback
+// implícito de getDataDir(). Desde que files.ts passou a resolver pelo
+// domínio ativo (exigindo domínio ou override explícito), a intenção
+// precisa ser declarada.
+beforeAll(() => {
+  process.env.LOCALDRAWDB_DATA_DIR = DATA_DIR;
+});
+afterAll(() => {
+  delete process.env.LOCALDRAWDB_DATA_DIR;
+});
 
 const MIN_DBML = `Table loja.cliente {
   id bigint [pk]

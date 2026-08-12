@@ -1,6 +1,8 @@
 // Helper de leitura do registry de projetos para o launcher.
 //
-// O registry (data/projects.json) só é criado por migrateLegacy(), que roda no
+// O CLI opera sempre dentro do domínio "local": o registry vive em
+// data/domains/local/projects.json (criado pela migração automática).
+// O registry só é criado por migrateLegacy(), que roda no
 // startup do servidor. Como o launcher precisa ler o registry ANTES de subir
 // qualquer servidor (para decidir quais projetos lançar), numa instalação limpa
 // o arquivo ainda não existe. Em vez de falhar, fazemos o bootstrap reusando a
@@ -17,15 +19,15 @@ const ENSURE_REGISTRY = path.join(ROOT, 'scripts', 'ensureRegistry.ts');
 const CREATE_PROJECT = path.join(ROOT, 'scripts', 'createProject.ts');
 
 /**
- * Lê o registry de projetos de `dataDir`, criando-o se ausente.
- * @param {string} dataDir Diretório de dados (contém projects.json).
+ * Lê o registry de projetos do domínio "local" em `dataDir`, criando-o se ausente.
+ * @param {string} dataDir Diretório de dados base (contém domains/local/projects.json).
  * @param {{ tsxCli?: string, ensureScript?: string }} [opts]
  * @returns {{ activeId: string, projects: Array<{ id: string, name: string, slug: string, createdAt: string, updatedAt: string }> }}
  */
 export function loadRegistry(dataDir, opts = {}) {
   const tsxCli = opts.tsxCli ?? TSX_CLI;
   const ensureScript = opts.ensureScript ?? ENSURE_REGISTRY;
-  const registryPath = path.join(dataDir, 'projects.json');
+  const registryPath = path.join(dataDir, 'domains', 'local', 'projects.json');
 
   // Sempre executa ensureRegistry para sincronizar pastas criadas manualmente.
   // A função é idempotente: só grava quando há mudanças (e.g. nova pasta em projects/).

@@ -1,0 +1,80 @@
+name: build-win-check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'src/**'
+      - 'scripts/build-win/**'
+      - 'scripts/devPorts.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-win-check.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    name: Build + smoke test (windows-latest)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows package
+        run: npm run build:win
+
+      - name: Upload LocalDrawDB-win.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalDrawDB-win
+          path: dist-win/LocalDrawDB-win.zip
+          retention-days: 14
+
+      - name: Extract package (fora do checkout, como um usuário faria)
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'pkg1'
+          Expand-Archive -Path 'dist-win/LocalDrawDB-win.zip' -DestinationPath $dest
+          echo "PKG1=$dest\LocalDrawDB-win" >> $env:GITHUB_ENV
+
+      # Itens 1, 2, 3, 6 do checklist: duplo-clique sem elevação, boot até o
+      # picker, /api/meta correto com git disponível (windows-latest já traz
+      # git no PATH), fechamento gracioso sem processo órfão.
+      - name: Smoke test — boot com git disponível
+        shell: pwsh
+        run: ./scripts/build-win/ci-smoke.ps1 -PackageDir "$env:PKG1" -ExpectGitAvailable $true
+
+      # Item 5: mover a pasta inteira pra outro local e continuar funcionando.
+      - name: Portabilidade — mover a pasta e rodar de novo
+        shell: pwsh
+        run: |
+          $moved = Join-Path $env:RUNNER_TEMP 'pkg1-moved'
+          Move-Item -Path "$env:PKG1" -Destination $moved
+          echo "PKG1_MOVED=$moved" >> $env:GITHUB_ENV
+
+      - name: Smoke test — após mover a pasta
+        shell: pwsh
+        run: ./scripts/build-win/ci-smoke.ps1 -PackageDir "$env:PKG1_MOVED" -ExpectGitAvailable $true
+
+      # Item 4: sem git no PATH, o app funciona e reporta gitAvailable=false.
+      - name: Extract fresh copy for no-git scenario
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'pkg2'
+          Expand-Archive -Path 'dist-win/LocalDrawDB-win.zip' -DestinationPath $dest
+          echo "PKG2=$dest\LocalDrawDB-win" >> $env:GITHUB_ENV
+
+      - name: Smoke test — boot sem git no PATH
+        shell: pwsh
+        run: ./scripts/build-win/ci-smoke.ps1 -PackageDir "$env:PKG2" -StripGit -ExpectGitAvailable $false

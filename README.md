@@ -77,6 +77,25 @@ npm run dev -- vendas rh           # só esses
 `Ctrl-C` encerra todas as instâncias do conjunto. Detalhes em
 [`spec/per-project-ports-spec.md`](spec/per-project-ports-spec.md).
 
+## Distribuição Windows (sem instalar Node)
+
+Pra usuários Windows que não querem instalar Node.js: baixe o pacote portátil
+(`LocalDrawDB-win.zip`) na [página de Releases](https://github.com/joaovitorclark/localdrawdb/releases/latest),
+extraia numa pasta qualquer e dê duplo-clique em
+`LocalDrawDB.exe` — sem instalador, sem precisar de administrador. Os dados
+ficam na pasta `data/` ao lado do executável, então mover a pasta inteira
+(inclusive pra um pendrive) leva tudo junto.
+
+Recursos de git (clonar, pull, commit, push) dependem do
+[Git for Windows](https://git-scm.com/download/win) instalado; sem ele o app
+funciona normalmente com domínios locais e avisa nas ações de git.
+
+Se você já usa **WSL**, não precisa deste pacote — rode o fluxo normal
+(`npm install && npm run dev`) dentro dele.
+
+Para gerar o pacote (mantenedores do projeto): `npm run build:win` — detalhes
+em [`scripts/build-win/README.md`](scripts/build-win/README.md).
+
 ## Como usar
 
 - **Editor (esquerda)**: DBML com realce de sintaxe, **Outline** (filtro + clique para ir à linha/tabela), fold de comentários.
