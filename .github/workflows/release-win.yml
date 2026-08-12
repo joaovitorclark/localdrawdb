@@ -2,26 +2,80 @@ name: release-win
 
 # Publica dist-win/LocalDrawDB-win.zip como asset de uma GitHub Release —
 # é a única forma de um usuário Windows chegar no .exe sem clonar o
-# repositório ou instalar Node/npm. Disparado por tag `v*` (fluxo normal de
-# release) ou manualmente via workflow_dispatch (ex: testar antes de merge).
+# repositório ou instalar Node/npm.
+#
+# Gatilho automático: todo push em main. O job check-version (barato,
+# ubuntu) só deixa o build (caro, windows-latest) seguir quando a versão em
+# package.json mudou desde o commit anterior — dar bump na versão e
+# mergear já é o suficiente, sem precisar empurrar tag manualmente.
+#
+# workflow_dispatch fica como via manual (ex: re-publicar a mesma versão
+# depois de um hotfix no pacote sem bump de versão).
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag da release (cria a tag se ainda não existir, apontando pro commit deste run)'
-        required: true
+        description: 'Tag da release (vazio = v<versão de package.json>)'
+        required: false
 
 permissions:
   contents: write
 
 jobs:
+  check-version:
+    name: Detecta bump de versão
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: check
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          CURR="$(jq -r .version package.json)"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+            if [ -z "$TAG" ]; then TAG="v$CURR"; fi
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PREV=""
+          if git cat-file -e HEAD~1:package.json 2>/dev/null; then
+            PREV="$(git show HEAD~1:package.json | jq -r .version)"
+          fi
+          TAG="v$CURR"
+
+          if [ "$CURR" = "$PREV" ]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "Versão não mudou ($CURR) — sem release."
+          elif gh release view "$TAG" >/dev/null 2>&1; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "$TAG já existe como release — sem release duplicada."
+          else
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "Versão mudou de '$PREV' para '$CURR' — release $TAG."
+          fi
+
   build-and-release:
     name: Build + smoke test + publicar (windows-latest)
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      TAG: ${{ needs.check-version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -47,21 +101,10 @@ jobs:
           Expand-Archive -Path 'dist-win/LocalDrawDB-win.zip' -DestinationPath $dest
           ./scripts/build-win/ci-smoke.ps1 -PackageDir "$dest\LocalDrawDB-win" -ExpectGitAvailable $true
 
-      - name: Determine tag
-        id: tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Create ou atualizar a GitHub Release
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist-win/LocalDrawDB-win.zip --clobber

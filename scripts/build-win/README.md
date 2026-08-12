@@ -27,9 +27,13 @@ gerar o blob.
 `dist-win/` é gitignored: clonar/baixar o repositório **não** dá acesso ao
 `.exe`. O caminho pra usuário final é `.github/workflows/release-win.yml` —
 builda, roda o smoke test, e publica `LocalDrawDB-win.zip` como asset de uma
-GitHub Release (aba "Releases" do repositório). Dispara automaticamente ao
-empurrar uma tag `v*`, ou manualmente via "Run workflow" (aba Actions)
-informando a tag. Quem só quer usar o app baixa o zip na página de
+GitHub Release (aba "Releases" do repositório). Dispara automaticamente em
+todo push em `main` — mas só builda/publica de verdade quando a versão em
+`package.json` mudou desde o commit anterior (job `check-version`, barato,
+evita rebuildar em todo merge). Pra soltar uma release: dê bump na versão e
+mergeie em `main`, sem precisar de comando nenhum. "Run workflow" (aba
+Actions) fica como via manual, pra re-publicar a mesma versão sem bump (ex:
+hotfix só no pacote). Quem só quer usar o app baixa o zip na página de
 Releases — sem git, sem npm, sem clonar nada.
 
 ## CI (windows-latest)
