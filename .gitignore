@@ -25,6 +25,9 @@ npm-debug.log*
 # Cache local de plugins do Claude Code (nunca versionar)
 .claude/
 
+# Rascunho de execução de planos (ledger, briefs, pacotes de review)
+.superpowers/
+
 # Sistema
 .DS_Store
 .env
