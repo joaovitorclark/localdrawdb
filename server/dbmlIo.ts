@@ -2,6 +2,7 @@
 // DBML é a fonte de verdade do projeto; o modelo é o intermediário para os geradores.
 import { Parser } from '@dbml/core';
 import { quoteDbmlNote } from '../src/dsl/dbmlNotes.ts';
+import { resolveMemberTableIds, tableIdsMatch } from '../src/dsl/tableIdMatch.ts';
 import { extractRecords } from './dbmlClean.ts';
 import { parseTypeName, qualifiedName } from './model.ts';
 import type { Column, ColumnTest, FieldLineageEntry, LineageEntry, Model, Ref, Table } from './model.ts';
@@ -10,8 +11,6 @@ const REL_TO_KIND: Record<string, '>' | '<' | '-' | '<>'> = {
   '*': '>', // muitos -> um (lado "from")
   '1': '-',
 };
-
-const stripQuotes = (s: string) => s.replace(/["`]/g, '').trim();
 
 function indexColName(c: unknown): string {
   if (typeof c === 'string') return c;
@@ -24,15 +23,6 @@ function isDegenerateRef(r: Ref): boolean {
     r.from.table.toLowerCase() === r.to.table.toLowerCase() &&
     r.from.column.toLowerCase() === r.to.column.toLowerCase()
   );
-}
-
-function tableIdMatches(a: string, b: string): boolean {
-  const x = stripQuotes(a).toLowerCase();
-  const y = stripQuotes(b).toLowerCase();
-  if (x === y) return true;
-  const lastX = x.split('.').pop()!;
-  const lastY = y.split('.').pop()!;
-  return lastX === lastY && (x.endsWith('.' + lastY) || y.endsWith('.' + lastX));
 }
 
 /** Faz parse de uma string DBML para o modelo canônico (inclui LayerGroup, Records, PK composta, Dbt). */
@@ -102,15 +92,18 @@ export function dbmlToModel(dbml: string): Model {
     }
   }
 
+  const tableIds = tables.map((x) => qualifiedName(x));
   for (const lg of layerGroups) {
     for (const member of lg.tables) {
-      const t = tables.find((x) => tableIdMatches(qualifiedName(x), member));
+      // Mesmas regras do TableGroup (#35): qualificado = exact; short name só se inequívoco.
+      const matched = resolveMemberTableIds(member, tableIds);
+      const t = tables.find((x) => matched.includes(qualifiedName(x)));
       if (t) t.layer = lg.name;
     }
   }
 
   for (const rec of records) {
-    const t = tables.find((x) => tableIdMatches(qualifiedName(x), rec.table) || x.name === rec.table);
+    const t = tables.find((x) => tableIdsMatch(qualifiedName(x), rec.table) || x.name === rec.table);
     if (!t) continue;
     if (rec.rows.length) {
       t.records = {
@@ -126,7 +119,7 @@ export function dbmlToModel(dbml: string): Model {
 
   // Aplica metadados dbt (bloco Dbt { }) às tabelas correspondentes
   for (const dbt of dbtTables) {
-    const t = tables.find((x) => tableIdMatches(qualifiedName(x), dbt.tableName));
+    const t = tables.find((x) => tableIdsMatch(qualifiedName(x), dbt.tableName));
     if (!t) continue;
     if (dbt.resourceType) t.resourceType = dbt.resourceType;
     if (dbt.materialization) t.materialization = dbt.materialization;
