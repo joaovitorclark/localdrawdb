@@ -75,6 +75,19 @@ máquina **sem** Node.js e **sem** privilégio de administrador) e confirme:
    (confira no Gerenciador de Tarefas que não sobra `node.exe` órfão).
    **(CI tenta fechamento gracioso via `taskkill` sem `/F` e checa órfãos;
    quando isso não confirma a tempo, o job avisa em vez de validar o item.)**
+8. [ ] **Modo app (com Edge):** duplo-clique em `LocalDrawDB.exe` abre uma
+   janela **sem barra de endereço e sem abas**, com ícone próprio na barra de
+   tarefas.
+9. [ ] **Fallback (sem Edge):** renomeie temporariamente a pasta
+   `Microsoft\Edge\Application` (ou use uma VM sem Edge) e rode de novo — o
+   app abre no navegador padrão, numa aba comum, com um aviso no console e
+   **sem erro**.
+10. [ ] **Atalho na Área de Trabalho:** a primeira execução cria
+    `LocalDrawDB.lnk` na Área de Trabalho, com o ícone do app, e o duplo-clique
+    nele abre o app igual ao `.exe`.
+11. [ ] **Atalho não é recriado:** apague o `.lnk` e rode o app de novo — ele
+    **não** reaparece (o marcador `data/.desktop-shortcut-attempted` já existe).
+12. [ ] **Sem elevação:** nenhuma das etapas acima exibe prompt de UAC.
 
 Se qualquer item falhar, não publique o release — abra uma issue com o item
 que falhou antes de investigar a causa.

@@ -1,10 +1,12 @@
 // Fonte do launcher — bundlado (bundleLauncher.mjs) e depois transformado num
-// .exe Windows via Node SEA (Task 4). Sobe o servidor local, espera responder, e
-// abre o navegador padrão. Fechar o processo encerra o servidor filho.
+// .exe Windows via Node SEA (Task 4). Sobe o servidor local, espera responder,
+// e abre a UI numa janela de aplicativo do Edge (fallback: navegador padrão).
+// Fechar o processo encerra o servidor filho.
 import path from 'node:path';
-import { spawn, exec } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { resolveLauncherPaths } from './launcherPaths.mjs';
 import { findFreePort, waitForPort } from '../devPorts.mjs';
+import { ensureDesktopShortcut, openApp } from './edgeAppMode.mjs';
 
 async function main() {
   // process.execPath é o caminho real do .exe em execução — não __dirname
@@ -94,7 +96,12 @@ async function main() {
     return;
   }
 
-  exec(`start "" "http://127.0.0.1:${port}"`);
+  const url = `http://127.0.0.1:${port}`;
+  // Janela de aplicativo primeiro: é o que o usuário está esperando ver.
+  await openApp({ url, launcherDir });
+  // Atalho depois, e só na primeira execução — a janela já está abrindo, então
+  // o meio segundo do PowerShell não atrasa nada que o usuário perceba.
+  await ensureDesktopShortcut({ launcherDir });
 }
 
 // exitCode (e não process.exit) para não derrubar o processo à força a partir do
