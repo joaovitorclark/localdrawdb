@@ -1,6 +1,7 @@
 import { lineOfColumn, lineOfGroupMember, lineOfRef, lineOfTable } from './lineLocate';
-import type { Block } from './blocks';
+import { splitDbmlBlocks, type Block } from './blocks';
 import type { ParseResult } from './parse';
+import { resolveMemberTableIds } from './tableIdMatch';
 
 export type ModelIssue = {
   severity: 'error' | 'warn';
@@ -10,6 +11,8 @@ export type ModelIssue = {
   line?: number;
 };
 
+const stripQuotes = (s: string) => s.replace(/["`']/g, '').trim();
+
 /** Valida refs, PKs e linhagem após o parse do DBML. */
 export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block[]): ModelIssue[] {
   if (parsed.error) {
@@ -17,10 +20,10 @@ export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block
   }
 
   const issues: ModelIssue[] = [];
-  const tableIds = new Set(parsed.tables.map((t) => t.id));
-  const hasTable = (id: string) =>
-    tableIds.has(id) ||
-    parsed.tables.some((t) => t.id === id || t.name === id.split('.').pop());
+  const tableIds = parsed.tables.map((t) => t.id);
+  const tableIdSet = new Set(tableIds);
+  // Mesmas regras de membership (#35): qualificado = exact; short name só se inequívoco.
+  const hasTable = (id: string) => resolveMemberTableIds(id, tableIds).length > 0;
 
   for (const lg of parsed.layerGroups) {
     for (const member of lg.tables) {
@@ -33,6 +36,34 @@ export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block
       });
     }
   }
+
+  // TableGroup: membros devem resolver com as mesmas regras usadas em applyTableGroupMembership.
+  if (dbml) {
+    const blks = blocks ?? splitDbmlBlocks(dbml);
+    for (const b of blks) {
+      if (b.type !== 'tableGroup' || !b.name) continue;
+      const groupName = stripQuotes(b.name);
+      const h = /TableGroup\s+("?[^"\s{]+"?)\s*\{/i.exec(b.text);
+      if (!h) continue;
+      const body = b.text.slice(h.index + h[0].length);
+      const end = body.lastIndexOf('}');
+      const inner = end >= 0 ? body.slice(0, end) : body;
+      for (const rawLine of inner.split('\n')) {
+        const trimmed = rawLine.trim();
+        if (!trimmed || trimmed.startsWith('//')) continue;
+        const member = stripQuotes(trimmed.replace(/,$/, ''));
+        if (!member) continue;
+        if (hasTable(member)) continue;
+        issues.push({
+          severity: 'error',
+          message: `TableGroup "${groupName}": tabela inexistente "${member}"`,
+          tableId: member,
+          line: lineOfGroupMember(dbml, member, blks),
+        });
+      }
+    }
+  }
+
   const colsByTable = new Map(
     parsed.tables.map((t) => [t.id, new Set(t.columns.map((c) => c.name))] as const),
   );
@@ -63,7 +94,7 @@ export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block
   }
 
   for (const r of parsed.refs) {
-    if (!tableIds.has(r.source)) {
+    if (!tableIdSet.has(r.source)) {
       issues.push({
         severity: 'error',
         message: `Ref origem inexistente: ${r.source}`,
@@ -77,7 +108,7 @@ export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block
         line: dbml ? lineOfRef(dbml, r.source, r.fromCol, blocks) : undefined,
       });
     }
-    if (!tableIds.has(r.target)) {
+    if (!tableIdSet.has(r.target)) {
       issues.push({
         severity: 'error',
         message: `Ref destino inexistente: ${r.target}`,
@@ -94,7 +125,7 @@ export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block
   }
 
   for (const f of parsed.lineageFields ?? []) {
-    if (!tableIds.has(f.targetTable)) {
+    if (!tableIdSet.has(f.targetTable)) {
       issues.push({
         severity: 'error',
         message: `Linhagem campo: tabela destino inexistente "${f.targetTable}"`,
@@ -108,7 +139,7 @@ export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block
         line: dbml ? lineOfColumn(dbml, f.targetTable, f.targetColumn, blocks) : undefined,
       });
     }
-    if (!tableIds.has(f.sourceTable)) {
+    if (!tableIdSet.has(f.sourceTable)) {
       issues.push({
         severity: 'error',
         message: `Linhagem campo: tabela origem inexistente "${f.sourceTable}"`,
@@ -125,7 +156,7 @@ export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block
   }
 
   for (const entry of parsed.lineage) {
-    if (!tableIds.has(entry.target)) {
+    if (!tableIdSet.has(entry.target)) {
       issues.push({
         severity: 'error',
         message: `Linhagem: destino inexistente "${entry.target}"`,
@@ -133,7 +164,7 @@ export function validateModel(parsed: ParseResult, dbml?: string, blocks?: Block
       });
     }
     for (const src of entry.sources) {
-      if (!tableIds.has(src)) {
+      if (!tableIdSet.has(src)) {
         issues.push({
           severity: 'error',
           message: `Linhagem: origem inexistente "${src}" → ${entry.target}`,

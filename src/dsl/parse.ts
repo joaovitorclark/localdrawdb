@@ -14,6 +14,7 @@ import {
 import type { ParsedRecords } from './records';
 import { resolveParseErrorLine } from './lineLocate';
 import { splitDbmlBlocks } from './blocks';
+import { resolveMemberTableIds, tableIdsMatch } from './tableIdMatch';
 
 export {
   extractRecords,
@@ -105,13 +106,6 @@ function buildParseError(
 
 const stripQuotes = (s: string) => s.replace(/["`]/g, '').trim();
 
-function tableIdMatches(member: string, tableId: string): boolean {
-  const a = stripQuotes(member).toLowerCase();
-  const b = stripQuotes(tableId).toLowerCase();
-  if (a === b) return true;
-  return a.split('.').pop() === b.split('.').pop();
-}
-
 /**
  * Normaliza um id de tabela como o parser o enxerga: minúsculas + trim.
  * Usado para detectar duplicatas antes de mutar o DBML (A3 do audit
@@ -128,16 +122,17 @@ export function normalizeColumnName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-/** Retorna o id existente que colide com `candidate` (case-insensitive, esquema opcional), ou null. */
+/** Retorna o id existente que colide com `candidate`, ou null.
+ *
+ * Colisão = mesmo id normalizado, ou (um dos lados sem schema) mesmo nome curto.
+ * Dois ids qualificados em schemas diferentes com o mesmo short name NÃO colidem
+ * — modelos multi-schema/multi-layer legítimos (#35).
+ */
 export function findDuplicateTableId(candidate: string, existing: string[]): string | null {
   const norm = normalizeTableId(candidate);
   if (!norm) return null;
-  const candShort = norm.split('.').pop();
   for (const id of existing) {
-    const existingNorm = normalizeTableId(id);
-    if (!existingNorm) continue;
-    if (existingNorm === norm) return id;
-    if (candShort && existingNorm.split('.').pop() === candShort) return id;
+    if (tableIdsMatch(candidate, id)) return id;
   }
   return null;
 }
@@ -154,6 +149,7 @@ export function findDuplicateColumnName(candidate: string, existing: string[]): 
 
 /** TableGroup no DBML → campo group das tabelas (páginas do canvas). */
 function applyTableGroupMembership(dbml: string, tables: TableView[]): void {
+  const tableIds = tables.map((t) => t.id);
   for (const b of splitDbmlBlocks(dbml)) {
     if (b.type !== 'tableGroup' || !b.name) continue;
     const groupName = stripQuotes(b.name);
@@ -167,8 +163,11 @@ function applyTableGroupMembership(dbml: string, tables: TableView[]): void {
       if (!trimmed || trimmed.startsWith('//')) continue;
       const member = stripQuotes(trimmed.replace(/,$/, ''));
       if (!member) continue;
+      // Membro qualificado → só id exact; short name só se unqualified e inequívoco.
+      // Evita layer_a.orders entrar no grupo que lista só layer_b.orders (#35).
+      const matched = new Set(resolveMemberTableIds(member, tableIds));
       for (const t of tables) {
-        if (tableIdMatches(member, t.id)) t.group = groupName;
+        if (matched.has(t.id)) t.group = groupName;
       }
     }
   }
@@ -259,7 +258,7 @@ export function parseDbml(dbml: string): ParseResult {
 
   // Anexa metadados dbt (bloco Dbt { }) às tabelas/colunas correspondentes.
   for (const d of dbtTables) {
-    const t = tables.find((x) => x.id === d.tableName || tableIdMatches(d.tableName, x.id));
+    const t = tables.find((x) => x.id === d.tableName || tableIdsMatch(d.tableName, x.id));
     if (!t) continue;
     if (d.resourceType) t.resourceType = d.resourceType;
     if (d.materialization) t.materialization = d.materialization;
