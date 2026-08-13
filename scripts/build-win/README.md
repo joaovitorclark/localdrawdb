@@ -71,8 +71,12 @@ máquina **sem** Node.js e **sem** privilégio de administrador) e confirme:
    local) mostra o prompt de UAC (elevação de administrador).
    **(CI cobre por proxy: o boot sem `-Verb RunAs` funciona; não observa
    diretamente a ausência do diálogo.)**
-7. [ ] Fechar a janela do `LocalDrawDB.exe` encerra o processo do servidor
-   (confira no Gerenciador de Tarefas que não sobra `node.exe` órfão).
+7. [ ] Fechar a **janela do console** (a janela de texto que é o processo
+   `LocalDrawDB.exe` propriamente dito, não a janela do app que abre por
+   cima) encerra o processo do servidor (confira no Gerenciador de Tarefas
+   que não sobra `node.exe` órfão). **`detached: true` + `unref()` desacopla
+   a janela do app do launcher nos dois sentidos — ver item 13 para o caso
+   inverso.**
    **(CI tenta fechamento gracioso via `taskkill` sem `/F` e checa órfãos;
    quando isso não confirma a tempo, o job avisa em vez de validar o item.)**
 8. [ ] **Modo app (com Edge):** duplo-clique em `LocalDrawDB.exe` abre uma
@@ -81,13 +85,26 @@ máquina **sem** Node.js e **sem** privilégio de administrador) e confirme:
 9. [ ] **Fallback (sem Edge):** renomeie temporariamente a pasta
    `Microsoft\Edge\Application` (ou use uma VM sem Edge) e rode de novo — o
    app abre no navegador padrão, numa aba comum, com um aviso no console e
-   **sem erro**.
+   **sem erro**. **Cuidado:** o Edge pode estar instalado em mais de um lugar
+   ao mesmo tempo — `findEdgePath` procura em `Program Files (x86)`,
+   `Program Files` **e** `%LOCALAPPDATA%` (instalação por usuário, sem
+   admin), além do registro. Renomear só o caminho em Program Files não
+   desativa uma instalação por usuário em `LOCALAPPDATA`, e o testador teria
+   um falso negativo (o app abriria em modo app do mesmo jeito). Renomeie a
+   pasta `Microsoft\Edge\Application` em **todos** os locais candidatos, ou
+   use uma VM sem Edge instalado.
 10. [ ] **Atalho na Área de Trabalho:** a primeira execução cria
     `LocalDrawDB.lnk` na Área de Trabalho, com o ícone do app, e o duplo-clique
     nele abre o app igual ao `.exe`.
 11. [ ] **Atalho não é recriado:** apague o `.lnk` e rode o app de novo — ele
     **não** reaparece (o marcador `data/.desktop-shortcut-attempted` já existe).
 12. [ ] **Sem elevação:** nenhuma das etapas acima exibe prompt de UAC.
+13. [ ] **Fechar só a janela do app:** com o app aberto, feche apenas a
+    janela do Edge (deixe o console aberto). O console e o servidor
+    continuam rodando — a janela do Edge some, mas o processo
+    `LocalDrawDB.exe` segue no Gerenciador de Tarefas. Pra encerrar de fato,
+    feche o console (item 7) ou finalize `LocalDrawDB.exe` pelo Gerenciador
+    de Tarefas.
 
 Se qualquer item falhar, não publique o release — abra uma issue com o item
 que falhou antes de investigar a causa.
@@ -103,6 +120,11 @@ LocalDrawDB-win/
   dist/                  # frontend buildado pelo Vite
   data/                  # vazia — o app cria domains.json/domains/ no 1º boot
 ```
+
+Em runtime, `data/` ganha mais duas coisas que não vêm no zip: `edge-profile/`
+(perfil próprio do Edge usado pela janela de aplicativo — apagar é seguro,
+é recriado no próximo uso) e `.desktop-shortcut-attempted` (marcador de que o
+atalho da Área de Trabalho já foi tentado, ver item 11 do checklist).
 
 ## Sobre WSL
 
