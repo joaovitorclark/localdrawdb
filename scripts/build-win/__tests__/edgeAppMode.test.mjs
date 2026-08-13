@@ -262,6 +262,9 @@ describe('ensureDesktopShortcut', () => {
     // é o que respeita redirecionamento (OneDrive, política de grupo).
     expect(args.at(-1)).toContain("GetFolderPath(\"Desktop\")");
     expect(args.at(-1)).toContain('LocalDrawDB.lnk');
+    // IconLocation é "caminho,índice" — sem o ",0" o Shell às vezes não
+    // resolve o ícone.
+    expect(args.at(-1)).toContain('$env:LDB_ICON + ",0"');
     // Caminhos vão por env, não interpolados no script: evita quebrar (ou pior,
     // injetar) quando o caminho tem aspas, espaços ou `$`.
     expect(opts.env.LDB_TARGET).toBe(exePath);
@@ -270,10 +273,81 @@ describe('ensureDesktopShortcut', () => {
 
     const markerExists = await fs.stat(markerPath()).then(() => true).catch(() => false);
     expect(markerExists).toBe(true);
+    // Marcador grava o launcherDir junto do timestamp — é o que permite
+    // detectar, na próxima execução, se a pasta portátil foi movida.
+    const markerContents = JSON.parse(await fs.readFile(markerPath(), 'utf8'));
+    expect(markerContents.launcherDir).toBe(launcherDir);
+    expect(typeof markerContents.attemptedAt).toBe('string');
   });
 
-  it('não tenta de novo quando o marcador já existe', async () => {
-    await fs.writeFile(markerPath(), 'já tentado', 'utf8');
+  it('não tenta de novo quando o marcador já existe com o mesmo launcherDir', async () => {
+    await fs.writeFile(
+      markerPath(),
+      JSON.stringify({ launcherDir, attemptedAt: new Date().toISOString() }),
+      'utf8',
+    );
+    const execImpl = vi.fn();
+
+    const result = await ensureDesktopShortcut({
+      launcherDir,
+      exePath: path.join(launcherDir, 'LocalDrawDB.exe'),
+      execImpl,
+      logger: { warn: vi.fn() },
+    });
+
+    expect(result).toEqual({ created: false, reason: 'already-attempted' });
+    expect(execImpl).not.toHaveBeenCalled();
+  });
+
+  it('recria o atalho quando o marcador registra um launcherDir diferente (pasta movida)', async () => {
+    const oldLauncherDir = path.join(launcherDir, '..', 'localdrawdb-pasta-antiga');
+    await fs.writeFile(
+      markerPath(),
+      JSON.stringify({ launcherDir: oldLauncherDir, attemptedAt: new Date().toISOString() }),
+      'utf8',
+    );
+    const execImpl = vi.fn(async () => ({ stdout: '', stderr: '' }));
+    const exePath = path.join(launcherDir, 'LocalDrawDB.exe');
+
+    const result = await ensureDesktopShortcut({
+      launcherDir,
+      exePath,
+      execImpl,
+      logger: { warn: vi.fn() },
+    });
+
+    expect(result).toEqual({ created: true });
+    expect(execImpl).toHaveBeenCalledTimes(1);
+    // Alvo do atalho recriado aponta pro caminho NOVO, não pro antigo.
+    const [, , opts] = execImpl.mock.calls[0];
+    expect(opts.env.LDB_TARGET).toBe(exePath);
+    expect(opts.env.LDB_WORKDIR).toBe(launcherDir);
+
+    const markerContents = JSON.parse(await fs.readFile(markerPath(), 'utf8'));
+    expect(markerContents.launcherDir).toBe(launcherDir);
+  });
+
+  it('trata marcador em formato antigo (só timestamp) como já tentado, sem recriar', async () => {
+    // Formato de uma versão anterior do launcher: só o timestamp, sem JSON.
+    await fs.writeFile(markerPath(), new Date().toISOString(), 'utf8');
+    const execImpl = vi.fn();
+
+    const result = await ensureDesktopShortcut({
+      launcherDir,
+      exePath: path.join(launcherDir, 'LocalDrawDB.exe'),
+      execImpl,
+      logger: { warn: vi.fn() },
+    });
+
+    // Lado conservador: não dá pra saber se a pasta mudou de lugar, então
+    // trata como já tentado em vez de arriscar recriar um atalho que o
+    // usuário pode ter apagado de propósito.
+    expect(result).toEqual({ created: false, reason: 'already-attempted' });
+    expect(execImpl).not.toHaveBeenCalled();
+  });
+
+  it('trata marcador corrompido/ilegível como já tentado, sem lançar', async () => {
+    await fs.writeFile(markerPath(), '{ isso não é JSON válido', 'utf8');
     const execImpl = vi.fn();
 
     const result = await ensureDesktopShortcut({

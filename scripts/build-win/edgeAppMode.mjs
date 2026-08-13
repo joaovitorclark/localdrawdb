@@ -151,7 +151,10 @@ const SHORTCUT_SCRIPT = [
   '$s = $shell.CreateShortcut($lnk)',
   '$s.TargetPath = $env:LDB_TARGET',
   '$s.WorkingDirectory = $env:LDB_WORKDIR',
-  '$s.IconLocation = $env:LDB_ICON',
+  // IconLocation é um par "caminho,índice", não só o caminho — sem o ",0"
+  // o Shell aceita mas o ícone às vezes não resolve. (Um caminho com vírgula
+  // quebraria essa convenção; raro o bastante pra não tratar aqui.)
+  '$s.IconLocation = $env:LDB_ICON + ",0"',
   '$s.Description = "LocalDrawDB"',
   '$s.Save()',
 ].join('; ');
@@ -163,6 +166,13 @@ const SHORTCUT_SCRIPT = [
  * .lnk: se olhássemos o .lnk, apagar o atalho de propósito faria ele
  * reaparecer na execução seguinte. Depois da primeira tentativa, quem manda é
  * o usuário.
+ *
+ * O marcador grava `launcherDir` (JSON `{ launcherDir, attemptedAt }`), não só
+ * o timestamp: o README incentiva mover a pasta portátil inteira (inclusive
+ * pra um pendrive), e o `.lnk` já criado aponta pro caminho ANTIGO — sem essa
+ * checagem o atalho fica morto pra sempre, sem nenhum sinal pro usuário.
+ * Mesmo `launcherDir` → pula (comportamento de hoje). `launcherDir` diferente
+ * → trata como tentativa nova e recria, com o caminho certo.
  */
 export async function ensureDesktopShortcut({
   launcherDir,
@@ -175,11 +185,32 @@ export async function ensureDesktopShortcut({
   const dataDir = path.join(launcherDir, 'data');
   const marker = path.join(dataDir, '.desktop-shortcut-attempted');
 
-  const alreadyAttempted = await fs
-    .stat(marker)
-    .then(() => true)
-    .catch(() => false);
-  if (alreadyAttempted) return { created: false, reason: 'already-attempted' };
+  const markerRaw = await fs.readFile(marker, 'utf8').catch(() => null);
+  if (markerRaw !== null) {
+    let parsed = null;
+    try {
+      parsed = JSON.parse(markerRaw);
+    } catch {
+      // Não é JSON: marcador de uma versão anterior (só timestamp) ou
+      // corrompido por gravação parcial (disco cheio, kill no meio do
+      // write). Em ambos os casos não dá pra saber se a pasta mudou de
+      // lugar desde a tentativa registrada — e o lado seguro de "atalho
+      // apagado de propósito continua apagado" é tratar como já tentado:
+      // um usuário que atualizou o app a partir de uma versão antiga (ou
+      // teve o marcador corrompido) não deve ver o atalho reaparecer
+      // sozinho só por causa disso.
+      parsed = null;
+    }
+    if (parsed && typeof parsed.launcherDir === 'string') {
+      if (parsed.launcherDir === launcherDir) {
+        return { created: false, reason: 'already-attempted' };
+      }
+      // launcherDir mudou (pasta foi movida): cai pro fluxo de recriação
+      // abaixo, com o novo caminho.
+    } else {
+      return { created: false, reason: 'already-attempted' };
+    }
+  }
 
   let result;
   try {
@@ -208,7 +239,11 @@ export async function ensureDesktopShortcut({
   // Grava o marcador nos dois desfechos — ver comentário no doc-block.
   try {
     await fs.mkdir(dataDir, { recursive: true });
-    await fs.writeFile(marker, new Date().toISOString(), 'utf8');
+    await fs.writeFile(
+      marker,
+      JSON.stringify({ launcherDir, attemptedAt: new Date().toISOString() }),
+      'utf8',
+    );
   } catch {
     // Nem o marcador conseguiu ser gravado: pasta somente-leitura. Não há o
     // que fazer, e isto não pode virar erro de boot.
