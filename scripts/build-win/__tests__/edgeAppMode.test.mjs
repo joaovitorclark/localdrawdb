@@ -1,6 +1,21 @@
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
-import { buildAppModeArgs, findEdgePath, openApp, parseRegistryCommand } from '../edgeAppMode.mjs';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  buildAppModeArgs,
+  ensureDesktopShortcut,
+  findEdgePath,
+  openApp,
+  parseRegistryCommand,
+} from '../edgeAppMode.mjs';
 
 // Caminhos montados com path.join: estes testes rodam em macOS/Linux, onde o
 // separador não é `\`.
@@ -205,5 +220,92 @@ describe('openApp', () => {
     child.emit('error', new Error('EACCES'));
     expect(fallbackOpen).toHaveBeenCalledWith(url);
     expect(logger.warn).toHaveBeenCalled();
+  });
+});
+
+describe('ensureDesktopShortcut', () => {
+  let launcherDir;
+
+  beforeEach(async () => {
+    // Diretório real em vez de fs mockado: o marcador é o núcleo do
+    // comportamento aqui, e testá-lo contra o filesystem de verdade é mais
+    // fiel do que espiar chamadas de writeFile.
+    launcherDir = await fs.mkdtemp(path.join(os.tmpdir(), 'localdrawdb-shortcut-'));
+    await fs.mkdir(path.join(launcherDir, 'data'), { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(launcherDir, { recursive: true, force: true });
+  });
+
+  const markerPath = () => path.join(launcherDir, 'data', '.desktop-shortcut-attempted');
+
+  it('cria o atalho na primeira execução e grava o marcador', async () => {
+    const execImpl = vi.fn(async () => ({ stdout: '', stderr: '' }));
+    const exePath = path.join(launcherDir, 'LocalDrawDB.exe');
+
+    const result = await ensureDesktopShortcut({
+      launcherDir,
+      exePath,
+      execImpl,
+      logger: { warn: vi.fn() },
+    });
+
+    expect(result).toEqual({ created: true });
+    expect(execImpl).toHaveBeenCalledTimes(1);
+
+    const [cmd, args, opts] = execImpl.mock.calls[0];
+    expect(cmd).toBe('powershell.exe');
+    expect(args).toContain('-NoProfile');
+    expect(args).toContain('-NonInteractive');
+    // O caminho da Área de Trabalho é resolvido pelo próprio PowerShell —
+    // é o que respeita redirecionamento (OneDrive, política de grupo).
+    expect(args.at(-1)).toContain("GetFolderPath(\"Desktop\")");
+    expect(args.at(-1)).toContain('LocalDrawDB.lnk');
+    // Caminhos vão por env, não interpolados no script: evita quebrar (ou pior,
+    // injetar) quando o caminho tem aspas, espaços ou `$`.
+    expect(opts.env.LDB_TARGET).toBe(exePath);
+    expect(opts.env.LDB_WORKDIR).toBe(launcherDir);
+    expect(opts.env.LDB_ICON).toBe(path.join(launcherDir, 'dist', 'favicon.ico'));
+
+    const markerExists = await fs.stat(markerPath()).then(() => true).catch(() => false);
+    expect(markerExists).toBe(true);
+  });
+
+  it('não tenta de novo quando o marcador já existe', async () => {
+    await fs.writeFile(markerPath(), 'já tentado', 'utf8');
+    const execImpl = vi.fn();
+
+    const result = await ensureDesktopShortcut({
+      launcherDir,
+      exePath: path.join(launcherDir, 'LocalDrawDB.exe'),
+      execImpl,
+      logger: { warn: vi.fn() },
+    });
+
+    expect(result).toEqual({ created: false, reason: 'already-attempted' });
+    expect(execImpl).not.toHaveBeenCalled();
+  });
+
+  it('engole a falha do PowerShell, avisa e marca a tentativa', async () => {
+    const execImpl = vi.fn(async () => {
+      throw new Error('AccessDenied');
+    });
+    const logger = { warn: vi.fn() };
+
+    const result = await ensureDesktopShortcut({
+      launcherDir,
+      exePath: path.join(launcherDir, 'LocalDrawDB.exe'),
+      execImpl,
+      logger,
+    });
+
+    expect(result).toEqual({ created: false, reason: 'error' });
+    expect(logger.warn).toHaveBeenCalled();
+    // Marca mesmo na falha: num Windows com política restritiva a criação
+    // falha sempre, e sem o marcador o launcher pagaria um spawn de
+    // PowerShell em toda execução, pra sempre.
+    const markerExists = await fs.stat(markerPath()).then(() => true).catch(() => false);
+    expect(markerExists).toBe(true);
   });
 });

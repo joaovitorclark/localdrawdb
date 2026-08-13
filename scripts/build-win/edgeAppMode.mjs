@@ -8,6 +8,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { exec, execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const EDGE_SUFFIX = path.join('Microsoft', 'Edge', 'Application', 'msedge.exe');
 const REGISTRY_KEY =
@@ -129,4 +130,89 @@ export async function openApp({
   child.unref?.();
 
   return { mode: 'edge-app', edgePath };
+}
+
+const defaultExecFile = promisify(execFile);
+
+// Criar .lnk exige o COM WScript.Shell — não há API de Node pra isso, e o
+// PowerShell já vem em todo Windows (nada a instalar).
+//
+// Os caminhos chegam por variável de ambiente (`$env:LDB_*`) em vez de
+// interpolados no script: caminho de usuário pode conter aspas, espaço ou `$`,
+// que quebrariam (ou permitiriam injetar) um script montado por concatenação.
+const SHORTCUT_SCRIPT = [
+  '$ErrorActionPreference = "Stop"',
+  // GetFolderPath respeita Área de Trabalho redirecionada (OneDrive, política
+  // de grupo); montar o caminho na mão a partir de %USERPROFILE% não respeita.
+  '$desktop = [Environment]::GetFolderPath("Desktop")',
+  'if (-not $desktop) { throw "Area de Trabalho nao resolvida" }',
+  '$lnk = Join-Path $desktop "LocalDrawDB.lnk"',
+  '$shell = New-Object -ComObject WScript.Shell',
+  '$s = $shell.CreateShortcut($lnk)',
+  '$s.TargetPath = $env:LDB_TARGET',
+  '$s.WorkingDirectory = $env:LDB_WORKDIR',
+  '$s.IconLocation = $env:LDB_ICON',
+  '$s.Description = "LocalDrawDB"',
+  '$s.Save()',
+].join('; ');
+
+/**
+ * Garante o atalho na Área de Trabalho, uma única vez por instalação.
+ *
+ * O marcador é `.desktop-shortcut-attempted` (tentativa), não a existência do
+ * .lnk: se olhássemos o .lnk, apagar o atalho de propósito faria ele
+ * reaparecer na execução seguinte. Depois da primeira tentativa, quem manda é
+ * o usuário.
+ */
+export async function ensureDesktopShortcut({
+  launcherDir,
+  // Num binário SEA, process.execPath é o próprio LocalDrawDB.exe — que é
+  // exatamente o alvo que o atalho deve apontar.
+  exePath = process.execPath,
+  execImpl = defaultExecFile,
+  logger = console,
+} = {}) {
+  const dataDir = path.join(launcherDir, 'data');
+  const marker = path.join(dataDir, '.desktop-shortcut-attempted');
+
+  const alreadyAttempted = await fs
+    .stat(marker)
+    .then(() => true)
+    .catch(() => false);
+  if (alreadyAttempted) return { created: false, reason: 'already-attempted' };
+
+  let result;
+  try {
+    await execImpl(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', SHORTCUT_SCRIPT],
+      {
+        timeout: 20_000,
+        env: {
+          ...process.env,
+          LDB_TARGET: exePath,
+          LDB_WORKDIR: launcherDir,
+          LDB_ICON: path.join(launcherDir, 'dist', 'favicon.ico'),
+        },
+      },
+    );
+    result = { created: true };
+  } catch (err) {
+    logger.warn(
+      `[LocalDrawDB] Não foi possível criar o atalho na Área de Trabalho: ${err.message}. ` +
+        'O aplicativo funciona normalmente — se quiser, crie o atalho manualmente a partir de LocalDrawDB.exe.',
+    );
+    result = { created: false, reason: 'error' };
+  }
+
+  // Grava o marcador nos dois desfechos — ver comentário no doc-block.
+  try {
+    await fs.mkdir(dataDir, { recursive: true });
+    await fs.writeFile(marker, new Date().toISOString(), 'utf8');
+  } catch {
+    // Nem o marcador conseguiu ser gravado: pasta somente-leitura. Não há o
+    // que fazer, e isto não pode virar erro de boot.
+  }
+
+  return result;
 }
