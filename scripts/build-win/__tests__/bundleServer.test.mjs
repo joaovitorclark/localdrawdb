@@ -45,6 +45,14 @@ describe('bundleServer', () => {
     const distExists = await fs.stat(distIndexPath).then((s) => s.isFile()).catch(() => false);
     expect(distExists).toBe(true);
 
+    // Cadeia public/favicon.ico -> Vite -> dist/ -> pacote -> IconLocation do
+    // atalho (edgeAppMode.mjs aponta pra outDir/dist/favicon.ico): nada mais
+    // neste repo cobre isso automaticamente, e um vite.config que pare de
+    // copiar public/ silenciosamente quebraria só o ícone, sem quebrar o app.
+    const distFaviconPath = path.join(outDir, 'dist', 'favicon.ico');
+    const faviconExists = await fs.stat(distFaviconPath).then((s) => s.isFile()).catch(() => false);
+    expect(faviconExists).toBe(true);
+
     // Smoke test real: sobe o bundle com o Node local e confere que responde.
     // ROOT resolve para `outDir` (um nível acima de app/server.bundle.mjs) —
     // por isso dist/ tem que estar em outDir/dist, não outDir/app/dist.
