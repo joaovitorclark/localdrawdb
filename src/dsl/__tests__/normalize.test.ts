@@ -40,9 +40,19 @@ describe('findDuplicateTableId', () => {
     expect(findDuplicateTableId('Gold.Dim_Customer', existing)).toBe('gold.dim_customer');
   });
 
-  it('detecta duplicata só pelo nome curto (sem schema)', () => {
+  it('permite mesmo short name em schemas diferentes (multi-schema)', () => {
     const existing = ['gold.dim_customer'];
-    expect(findDuplicateTableId('silver.dim_customer', existing)).toBe('gold.dim_customer');
+    expect(findDuplicateTableId('silver.dim_customer', existing)).toBeNull();
+  });
+
+  it('bloqueia unqualified contra existente qualificado com o mesmo short name', () => {
+    const existing = ['gold.dim_customer'];
+    expect(findDuplicateTableId('dim_customer', existing)).toBe('gold.dim_customer');
+  });
+
+  it('bloqueia qualificado contra existente unqualified com o mesmo short name', () => {
+    const existing = ['dim_customer'];
+    expect(findDuplicateTableId('gold.dim_customer', existing)).toBe('dim_customer');
   });
 });
 

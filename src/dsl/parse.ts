@@ -122,16 +122,17 @@ export function normalizeColumnName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-/** Retorna o id existente que colide com `candidate` (case-insensitive, esquema opcional), ou null. */
+/** Retorna o id existente que colide com `candidate`, ou null.
+ *
+ * Colisão = mesmo id normalizado, ou (um dos lados sem schema) mesmo nome curto.
+ * Dois ids qualificados em schemas diferentes com o mesmo short name NÃO colidem
+ * — modelos multi-schema/multi-layer legítimos (#35).
+ */
 export function findDuplicateTableId(candidate: string, existing: string[]): string | null {
   const norm = normalizeTableId(candidate);
   if (!norm) return null;
-  const candShort = norm.split('.').pop();
   for (const id of existing) {
-    const existingNorm = normalizeTableId(id);
-    if (!existingNorm) continue;
-    if (existingNorm === norm) return id;
-    if (candShort && existingNorm.split('.').pop() === candShort) return id;
+    if (tableIdsMatch(candidate, id)) return id;
   }
   return null;
 }
