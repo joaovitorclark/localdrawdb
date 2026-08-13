@@ -7,7 +7,7 @@
 // lógica em macOS/Linux, onde não há Edge nem `reg`.
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { exec, execFile, spawn } from 'node:child_process';
 
 const EDGE_SUFFIX = path.join('Microsoft', 'Edge', 'Application', 'msedge.exe');
 const REGISTRY_KEY =
@@ -65,4 +65,68 @@ export async function findEdgePath({
   if (fromRegistry && (await fileExists(fromRegistry))) return fromRegistry;
 
   return null;
+}
+
+function defaultFallbackOpen(url) {
+  // Mesmo comando que o launcher usava antes do modo app. As aspas vazias são
+  // o *título* que o `start` do cmd.exe exige antes de um alvo entre aspas.
+  exec(`start "" "${url}"`);
+}
+
+/**
+ * Argumentos da janela de aplicativo: sem barra de endereço nem abas, com
+ * perfil próprio dentro da pasta portátil (não toca no Edge do usuário) e sem
+ * as telas de boas-vindas/navegador padrão, que apareceriam em todo primeiro
+ * uso por causa justamente do perfil novo.
+ */
+export function buildAppModeArgs({ url, profileDir }) {
+  return [
+    `--app=${url}`,
+    `--user-data-dir=${profileDir}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+  ];
+}
+
+/**
+ * Abre a UI em janela de aplicativo do Edge; sem Edge utilizável, abre o
+ * navegador padrão (comportamento anterior). Nunca lança: perder o modo app é
+ * degradação de experiência, não motivo pra derrubar o launcher.
+ */
+export async function openApp({
+  url,
+  launcherDir,
+  findEdgePathImpl = findEdgePath,
+  spawnImpl = spawn,
+  fallbackOpen = defaultFallbackOpen,
+  logger = console,
+} = {}) {
+  const edgePath = await findEdgePathImpl();
+
+  if (!edgePath) {
+    logger.warn(
+      '[LocalDrawDB] Microsoft Edge não encontrado — abrindo no navegador padrão (sem janela de aplicativo).',
+    );
+    fallbackOpen(url);
+    return { mode: 'default-browser', edgePath: null };
+  }
+
+  const profileDir = path.join(launcherDir, 'data', 'edge-profile');
+  const child = spawnImpl(edgePath, buildAppModeArgs({ url, profileDir }), {
+    detached: true,
+    stdio: 'ignore',
+  });
+
+  // O Edge pode existir e ainda assim não subir (bloqueio de política, binário
+  // corrompido). spawn reporta isso por evento assíncrono — sem este handler
+  // seria uncaught exception, e o usuário ficaria sem janela nenhuma.
+  child.on?.('error', (err) => {
+    logger.warn(
+      `[LocalDrawDB] Falha ao abrir o Edge (${err.message}) — abrindo no navegador padrão.`,
+    );
+    fallbackOpen(url);
+  });
+  child.unref?.();
+
+  return { mode: 'edge-app', edgePath };
 }

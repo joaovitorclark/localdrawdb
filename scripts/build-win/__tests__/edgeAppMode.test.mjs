@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { findEdgePath, parseRegistryCommand } from '../edgeAppMode.mjs';
+import { buildAppModeArgs, findEdgePath, openApp, parseRegistryCommand } from '../edgeAppMode.mjs';
 
 // Caminhos montados com path.join: estes testes rodam em macOS/Linux, onde o
 // separador não é `\`.
@@ -104,5 +104,106 @@ describe('findEdgePath', () => {
     expect(found).toBe(EDGE_IN_LOCALAPPDATA);
     // Achou por caminho conhecido: não consulta registro.
     expect(queryRegistry).not.toHaveBeenCalled();
+  });
+});
+
+// Dublê de ChildProcess: registra unref/handlers sem spawnar nada de verdade.
+function fakeChild() {
+  const handlers = {};
+  return {
+    unref: vi.fn(),
+    on: vi.fn((event, fn) => {
+      handlers[event] = fn;
+    }),
+    emit: (event, arg) => handlers[event]?.(arg),
+  };
+}
+
+describe('buildAppModeArgs', () => {
+  it('monta os argumentos de janela de aplicativo com perfil isolado', () => {
+    const profileDir = path.join('C:', 'LocalDrawDB', 'data', 'edge-profile');
+    const args = buildAppModeArgs({ url: 'http://127.0.0.1:5174', profileDir });
+
+    expect(args).toEqual([
+      '--app=http://127.0.0.1:5174',
+      `--user-data-dir=${profileDir}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+    ]);
+  });
+});
+
+describe('openApp', () => {
+  const launcherDir = path.join('C:', 'LocalDrawDB');
+  const url = 'http://127.0.0.1:5174';
+
+  it('abre o Edge em modo app quando o Edge existe', async () => {
+    const child = fakeChild();
+    const spawnImpl = vi.fn(() => child);
+    const fallbackOpen = vi.fn();
+
+    const result = await openApp({
+      url,
+      launcherDir,
+      findEdgePathImpl: async () => EDGE_IN_X86,
+      spawnImpl,
+      fallbackOpen,
+      logger: { warn: vi.fn() },
+    });
+
+    expect(result).toEqual({ mode: 'edge-app', edgePath: EDGE_IN_X86 });
+    expect(fallbackOpen).not.toHaveBeenCalled();
+
+    const [exe, args, opts] = spawnImpl.mock.calls[0];
+    expect(exe).toBe(EDGE_IN_X86);
+    expect(args).toContain(`--app=${url}`);
+    // Perfil dentro da pasta portátil: nada em %LOCALAPPDATA%.
+    expect(args).toContain(
+      `--user-data-dir=${path.join(launcherDir, 'data', 'edge-profile')}`,
+    );
+    // detached + unref: fechar o launcher não pode arrastar a janela junto.
+    expect(opts).toMatchObject({ detached: true, stdio: 'ignore' });
+    expect(child.unref).toHaveBeenCalled();
+  });
+
+  it('cai no navegador padrão quando não há Edge', async () => {
+    const spawnImpl = vi.fn();
+    const fallbackOpen = vi.fn();
+    const logger = { warn: vi.fn() };
+
+    const result = await openApp({
+      url,
+      launcherDir,
+      findEdgePathImpl: async () => null,
+      spawnImpl,
+      fallbackOpen,
+      logger,
+    });
+
+    expect(result).toEqual({ mode: 'default-browser', edgePath: null });
+    expect(spawnImpl).not.toHaveBeenCalled();
+    expect(fallbackOpen).toHaveBeenCalledWith(url);
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it('cai no navegador padrão quando o Edge existe mas falha ao subir', async () => {
+    const child = fakeChild();
+    const fallbackOpen = vi.fn();
+    const logger = { warn: vi.fn() };
+
+    await openApp({
+      url,
+      launcherDir,
+      findEdgePathImpl: async () => EDGE_IN_X86,
+      spawnImpl: () => child,
+      fallbackOpen,
+      logger,
+    });
+
+    // spawn reporta falha de execução de forma assíncrona, via evento 'error'.
+    expect(fallbackOpen).not.toHaveBeenCalled();
+    child.emit('error', new Error('EACCES'));
+    expect(fallbackOpen).toHaveBeenCalledWith(url);
+    expect(logger.warn).toHaveBeenCalled();
   });
 });
