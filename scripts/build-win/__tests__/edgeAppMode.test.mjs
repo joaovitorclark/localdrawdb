@@ -36,6 +36,16 @@ describe('parseRegistryCommand', () => {
     expect(parseRegistryCommand('')).toBeNull();
     expect(parseRegistryCommand('ERRO: nao foi possivel encontrar a chave')).toBeNull();
   });
+
+  it('extrai caminho sem aspas descartando argumentos', () => {
+    const output = '    (Default)    REG_SZ    C:\\Edge\\msedge.exe --single-argument %1';
+    expect(parseRegistryCommand(output)).toBe('C:\\Edge\\msedge.exe');
+  });
+
+  it('extrai caminho sem aspas sem argumentos', () => {
+    const output = '    (Default)    REG_SZ    C:\\Edge\\msedge.exe';
+    expect(parseRegistryCommand(output)).toBe('C:\\Edge\\msedge.exe');
+  });
 });
 
 describe('findEdgePath', () => {
@@ -81,5 +91,18 @@ describe('findEdgePath', () => {
     expect(await findEdgePath({ env: {}, fileExists, queryRegistry })).toBeNull();
     // env vazio: nenhum candidato conhecido pra testar.
     expect(fileExists).not.toHaveBeenCalled();
+  });
+
+  it('encontra Edge em LOCALAPPDATA quando os Program Files não estão definidos', async () => {
+    const LOCALAPPDATA = path.join('C:', 'Users', 'jvclark', 'AppData', 'Local');
+    const EDGE_IN_LOCALAPPDATA = path.join(LOCALAPPDATA, EDGE_SUFFIX);
+    const fileExists = vi.fn(async (p) => p === EDGE_IN_LOCALAPPDATA);
+    const queryRegistry = vi.fn();
+
+    const found = await findEdgePath({ env: { LOCALAPPDATA }, fileExists, queryRegistry });
+
+    expect(found).toBe(EDGE_IN_LOCALAPPDATA);
+    // Achou por caminho conhecido: não consulta registro.
+    expect(queryRegistry).not.toHaveBeenCalled();
   });
 });
