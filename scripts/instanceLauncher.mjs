@@ -35,6 +35,7 @@ export function buildInstanceEnv({ domainSlug, projectSlug, apiPort, webPort }, 
  * @returns {Promise<{ server: import('node:child_process').ChildProcess, web: import('node:child_process').ChildProcess }>}
  */
 export async function startInstance(opts) {
+  const { apiPort, webPort } = opts;
   const env = buildInstanceEnv(opts);
 
   const server = spawn(process.execPath, [TSX_CLI, 'watch', 'server/index.ts'], {
@@ -43,12 +44,34 @@ export async function startInstance(opts) {
     stdio: 'inherit',
   });
 
-  await waitForPort(opts.apiPort);
+  await waitForPort(apiPort);
 
-  const web = spawn(process.execPath, [VITE_CLI, '--port', String(opts.webPort), '--strictPort'], {
+  const web = spawn(process.execPath, [VITE_CLI, '--port', String(webPort), '--strictPort'], {
     cwd: ROOT,
     env,
     stdio: 'inherit',
+  });
+
+  // Sem isto o orquestrador segue para o próximo projeto enquanto o Vite
+  // ainda pode morrer com EADDRINUSE — e as APIs órfãs continuam no ar.
+  await new Promise((resolve, reject) => {
+    const onExit = (code) => {
+      reject(
+        new Error(
+          `Vite não subiu na porta ${webPort} (código ${code ?? 'null'}). ` +
+            `Quase sempre é outro npm run dev ainda rodando.\n` +
+            `  lsof -nP -iTCP:${webPort} -sTCP:LISTEN\n` +
+            `  kill <PID>`,
+        ),
+      );
+    };
+    web.once('exit', onExit);
+    waitForPort(webPort, '127.0.0.1', 30_000)
+      .then(() => {
+        web.off('exit', onExit);
+        resolve();
+      })
+      .catch(reject);
   });
 
   return { server, web };
@@ -61,8 +84,10 @@ export async function startInstance(opts) {
  */
 export function startPreviewInstance({ domainSlug, projectSlug, port }) {
   const env = {
-    ...buildInstanceEnv({ domainSlug, projectSlug, apiPort: port, webPort: port }),
+    ...process.env,
     NODE_ENV: 'production',
+    PORT: String(port),
+    ...(domainSlug && projectSlug ? { LOCALDRAWDB_DOMAIN: domainSlug, LOCALDRAWDB_PROJECT: projectSlug } : {}),
   };
   const server = spawn(process.execPath, [TSX_CLI, 'server/index.ts'], { cwd: ROOT, env, stdio: 'inherit' });
   return { server, web: null };
