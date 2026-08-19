@@ -3,6 +3,7 @@
 // parada explicitamente ou até o processo filho cair sozinho. Estado vive só
 // na memória do processo do controlboard — não persiste em disco.
 import crypto from 'node:crypto';
+import type { ChildProcess } from 'node:child_process';
 import { startInstance, stopInstance } from '../scripts/instanceLauncher.mjs';
 import { findFreePort } from '../scripts/devPorts.mjs';
 
@@ -18,10 +19,7 @@ export interface BoardInstance {
   startedAt: string;
 }
 
-interface KillableHandle {
-  server: { kill: (signal: string) => void; on: (event: string, cb: (code: number | null) => void) => void };
-  web: { kill: (signal: string) => void; on: (event: string, cb: (code: number | null) => void) => void } | null;
-}
+type KillableHandle = { server: ChildProcess; web: ChildProcess | null };
 
 export interface InstanceManagerDeps {
   startInstance: (opts: {
