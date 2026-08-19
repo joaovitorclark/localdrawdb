@@ -24,30 +24,49 @@ function isNotFound(e: any): boolean {
 /**
  * Lista os projetos de um domínio SEM os efeitos colaterais de
  * `activateDomain()` (que também dispara `seedGitIfNeeded` — commit/push de
- * bootstrap via rede). Troca o domínio ativo do processo, garante o
- * registry, lê os projetos.
+ * bootstrap via rede). Troca o domínio ativo do processo e lê os projetos —
+ * NÃO chama `ensureRegistry()`: isto é usado por um endpoint de listagem
+ * (read-only), e `ensureRegistry()` materializaria um projeto "default" em
+ * disco (`migrateLegacy()`) só de o domínio ser exibido no board.
+ * `readRegistry()` (via `listProjects()`) já lida bem com `projects.json`
+ * ausente, retornando lista vazia.
  */
 async function listProjectsForDomain(slug: string) {
   setActiveDomainSlug(slug);
-  await ensureRegistry();
   return listProjects();
 }
 
+/**
+ * Serializa handlers que leem/escrevem o domínio ativo do processo (estado
+ * global mutável em server/domainContext.ts) — sem isto, duas requisições
+ * concorrentes podem intercalar setActiveDomainSlug()/reset e uma delas
+ * ler/escrever no domínio errado.
+ */
+let domainStateQueue: Promise<void> = Promise.resolve();
+function withDomainLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = domainStateQueue.then(fn, fn);
+  domainStateQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 export function registerControlboardRoutes(app: FastifyInstance, instances: InstanceManager): void {
-  // GET/POST aqui percorrem domínios sequencialmente — o domínio ativo é
-  // estado global do processo (server/domainContext.ts), nunca em paralelo.
   app.get('/api/board/domains', async () => {
-    const domains = await listDomains();
-    const withProjects: unknown[] = [];
-    try {
-      for (const domain of domains) {
-        const projects = await listProjectsForDomain(domain.slug);
-        withProjects.push({ ...domain, projects });
+    return withDomainLock(async () => {
+      const domains = await listDomains();
+      const withProjects: unknown[] = [];
+      try {
+        for (const domain of domains) {
+          const projects = await listProjectsForDomain(domain.slug);
+          withProjects.push({ ...domain, projects });
+        }
+      } finally {
+        setActiveDomainSlug(null);
       }
-    } finally {
-      setActiveDomainSlug(null);
-    }
-    return { domains: withProjects };
+      return { domains: withProjects };
+    });
   });
 
   app.post<{ Body: CreateDomainBody }>('/api/board/domains', async (req, reply) => {
@@ -73,8 +92,10 @@ export function registerControlboardRoutes(app: FastifyInstance, instances: Inst
   app.delete<{ Params: { id: string } }>('/api/board/domains/:id', async (req, reply) => {
     try {
       const domain = await getDomain(req.params.id);
-      instances.stopByDomain(domain.slug);
-      await deleteDomain(req.params.id);
+      await instances.stopByDomainAndWait(domain.slug);
+      await withDomainLock(async () => {
+        await deleteDomain(req.params.id);
+      });
       return { ok: true };
     } catch (e: any) {
       if (isNotFound(e)) return reply.code(404).send({ error: e.message });
@@ -93,14 +114,16 @@ export function registerControlboardRoutes(app: FastifyInstance, instances: Inst
     } catch (e: any) {
       return reply.code(404).send({ error: e.message });
     }
-    setActiveDomainSlug(domain.slug);
-    try {
-      await ensureRegistry();
-      const project = await createProject(name);
-      return { ...project, domainId: domain.id, domainSlug: domain.slug };
-    } finally {
-      setActiveDomainSlug(null);
-    }
+    return withDomainLock(async () => {
+      setActiveDomainSlug(domain.slug);
+      try {
+        await ensureRegistry();
+        const project = await createProject(name);
+        return { ...project, domainId: domain.id, domainSlug: domain.slug };
+      } finally {
+        setActiveDomainSlug(null);
+      }
+    });
   });
 
   app.get('/api/board/instances', async () => {
@@ -119,12 +142,13 @@ export function registerControlboardRoutes(app: FastifyInstance, instances: Inst
     } catch (e: any) {
       return reply.code(404).send({ error: e.message });
     }
-    let projects;
-    try {
-      projects = await listProjectsForDomain(domain.slug);
-    } finally {
-      setActiveDomainSlug(null);
-    }
+    const projects = await withDomainLock(async () => {
+      try {
+        return await listProjectsForDomain(domain.slug);
+      } finally {
+        setActiveDomainSlug(null);
+      }
+    });
     const project = projects.find((p) => p.id === projectId);
     if (!project) return reply.code(404).send({ error: 'Projeto não encontrado.' });
     try {

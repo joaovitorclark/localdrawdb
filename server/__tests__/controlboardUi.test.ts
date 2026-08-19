@@ -6,5 +6,6 @@ describe('CONTROLBOARD_HTML', () => {
     expect(CONTROLBOARD_HTML).toContain('<html');
     expect(CONTROLBOARD_HTML).toContain('/api/board/domains');
     expect(CONTROLBOARD_HTML).toContain('/api/board/instances');
+    expect(CONTROLBOARD_HTML).toContain('confirm(');
   });
 });

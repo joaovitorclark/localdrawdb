@@ -9,7 +9,10 @@ function fakeFindFreePort(start: number, _host?: string, exclude = new Set<numbe
 }
 
 function makeDeps() {
-  const stopInstance = vi.fn();
+  const stopInstance = vi.fn((handle: any) => {
+    handle.server.emit('exit', 0);
+    handle.web?.emit('exit', 0);
+  });
   const startInstance = vi.fn(async () => ({ server: new EventEmitter(), web: new EventEmitter() }));
   return { startInstance: startInstance as any, stopInstance, findFreePort: fakeFindFreePort };
 }
@@ -76,5 +79,37 @@ describe('createInstanceManager', () => {
     manager.stopAll();
     expect(manager.list()).toHaveLength(0);
     expect(deps.stopInstance).toHaveBeenCalledTimes(2);
+  });
+
+  it('launch libera as portas se o spawn falhar', async () => {
+    const deps = makeDeps();
+    deps.startInstance = vi.fn(async () => {
+      throw new Error('spawn falhou');
+    }) as any;
+    const manager = createInstanceManager(deps);
+    await expect(manager.launch(OPTS_A)).rejects.toThrow('spawn falhou');
+    // porta deve ter sido liberada — o próximo launch pega a mesma porta de novo, não a próxima
+    deps.startInstance = vi.fn(async () => ({ server: new EventEmitter(), web: new EventEmitter() })) as any;
+    const b = await manager.launch(OPTS_A);
+    expect(b.apiPort).toBe(5174);
+  });
+
+  it('stopByDomainAndWait espera o processo sair antes de resolver', async () => {
+    const deps = makeDeps();
+    const manager = createInstanceManager(deps);
+    await manager.launch(OPTS_A);
+    const rh = await manager.launch(OPTS_B);
+    await manager.stopByDomainAndWait('vendas');
+    expect(manager.list().map((i) => i.id)).toEqual([rh.id]);
+    expect(deps.stopInstance).toHaveBeenCalledTimes(1);
+  });
+
+  it('stopByDomainAndWait resolve por timeout se o processo nunca emitir exit', async () => {
+    const stopInstance = vi.fn(); // não emite 'exit' — simula processo que não morre
+    const startInstance = vi.fn(async () => ({ server: new EventEmitter(), web: new EventEmitter() }));
+    const manager = createInstanceManager({ startInstance: startInstance as any, stopInstance, findFreePort: fakeFindFreePort });
+    await manager.launch(OPTS_A);
+    await manager.stopByDomainAndWait('vendas', 20);
+    expect(manager.list()).toHaveLength(0);
   });
 });

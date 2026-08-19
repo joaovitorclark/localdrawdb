@@ -87,7 +87,7 @@ function renderDomains(domains) {
       '<div class="domain__head">' +
         '<span class="' + badgeClass + '">' + badgeText + '</span>' +
         '<strong>' + escapeHtml(d.name) + '</strong>' +
-        '<button data-delete-domain="' + d.id + '" style="margin-left:auto">Apagar domínio</button>' +
+        '<button data-delete-domain="' + d.id + '" data-name="' + escapeHtml(d.name) + '" style="margin-left:auto">Apagar domínio</button>' +
       '</div>' +
       '<div class="projects"></div>' +
       '<form class="new-project-form" data-domain="' + d.id + '">' +
@@ -144,6 +144,7 @@ document.getElementById('domains').addEventListener('click', async (e) => {
       showError(err.message);
     }
   } else if (target.dataset.deleteDomain) {
+    if (!confirm('Apagar "' + target.dataset.name + '" deste computador? O repositório no GitHub não será alterado.')) return;
     showError('');
     try {
       await api('DELETE', '/api/board/domains/' + target.dataset.deleteDomain);

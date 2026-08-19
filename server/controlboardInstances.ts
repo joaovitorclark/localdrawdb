@@ -57,12 +57,19 @@ export function createInstanceManager(deps: InstanceManagerDeps = defaultDeps) {
     const webPort = await deps.findFreePort(5173, '127.0.0.1', usedPorts);
     usedPorts.add(webPort);
 
-    const handle = await deps.startInstance({
-      domainSlug: opts.domainSlug,
-      projectSlug: opts.projectSlug,
-      apiPort,
-      webPort,
-    });
+    let handle: KillableHandle;
+    try {
+      handle = await deps.startInstance({
+        domainSlug: opts.domainSlug,
+        projectSlug: opts.projectSlug,
+        apiPort,
+        webPort,
+      });
+    } catch (err) {
+      usedPorts.delete(apiPort);
+      usedPorts.delete(webPort);
+      throw err;
+    }
 
     const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
     const meta: BoardInstance = {
@@ -106,11 +113,40 @@ export function createInstanceManager(deps: InstanceManagerDeps = defaultDeps) {
     }
   }
 
+  /**
+   * Como `stopByDomain`, mas espera os processos realmente saírem (ou um
+   * timeout) antes de retornar — usado antes de apagar a pasta do domínio,
+   * pra nunca rodar `fs.rm` com o processo ainda escrevendo nela.
+   */
+  async function stopByDomainAndWait(domainSlug: string, timeoutMs = 5000): Promise<void> {
+    const matches = [...instances.entries()].filter(([, entry]) => entry.meta.domainSlug === domainSlug);
+    await Promise.all(
+      matches.map(
+        ([id, entry]) =>
+          new Promise<void>((resolve) => {
+            let done = false;
+            const finish = () => {
+              if (done) return;
+              done = true;
+              release(id);
+              resolve();
+            };
+            const timer = setTimeout(finish, timeoutMs);
+            entry.handle.server.on('exit', () => {
+              clearTimeout(timer);
+              finish();
+            });
+            deps.stopInstance(entry.handle);
+          }),
+      ),
+    );
+  }
+
   function stopAll(): void {
     for (const id of [...instances.keys()]) stop(id);
   }
 
-  return { launch, list, stop, stopByDomain, stopAll };
+  return { launch, list, stop, stopByDomain, stopByDomainAndWait, stopAll };
 }
 
 export type InstanceManager = ReturnType<typeof createInstanceManager>;

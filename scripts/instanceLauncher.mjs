@@ -52,27 +52,32 @@ export async function startInstance(opts) {
     stdio: 'inherit',
   });
 
-  // Sem isto o orquestrador segue para o próximo projeto enquanto o Vite
-  // ainda pode morrer com EADDRINUSE — e as APIs órfãs continuam no ar.
-  await new Promise((resolve, reject) => {
-    const onExit = (code) => {
-      reject(
-        new Error(
-          `Vite não subiu na porta ${webPort} (código ${code ?? 'null'}). ` +
-            `Quase sempre é outro npm run dev ainda rodando.\n` +
-            `  lsof -nP -iTCP:${webPort} -sTCP:LISTEN\n` +
-            `  kill <PID>`,
-        ),
-      );
-    };
-    web.once('exit', onExit);
-    waitForPort(webPort, '127.0.0.1', 30_000)
-      .then(() => {
-        web.off('exit', onExit);
-        resolve();
-      })
-      .catch(reject);
-  });
+  try {
+    // Sem isto o orquestrador segue para o próximo projeto enquanto o Vite
+    // ainda pode morrer com EADDRINUSE — e as APIs órfãs continuam no ar.
+    await new Promise((resolve, reject) => {
+      const onExit = (code) => {
+        reject(
+          new Error(
+            `Vite não subiu na porta ${webPort} (código ${code ?? 'null'}). ` +
+              `Quase sempre é outro npm run dev ainda rodando.\n` +
+              `  lsof -nP -iTCP:${webPort} -sTCP:LISTEN\n` +
+              `  kill <PID>`,
+          ),
+        );
+      };
+      web.once('exit', onExit);
+      waitForPort(webPort, '127.0.0.1', 30_000)
+        .then(() => {
+          web.off('exit', onExit);
+          resolve();
+        })
+        .catch(reject);
+    });
+  } catch (err) {
+    server.kill('SIGTERM');
+    throw err;
+  }
 
   return { server, web };
 }

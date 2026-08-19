@@ -32,7 +32,13 @@ afterEach(async () => {
 function fakeInstanceManager() {
   return createInstanceManager({
     startInstance: async () => ({ server: new EventEmitter() as any, web: new EventEmitter() as any }),
-    stopInstance: () => {},
+    stopInstance: (handle: any) => {
+      // Simula o processo realmente saindo, senão stopByDomainAndWait
+      // ficaria preso até o timeout em todo teste que apaga um domínio
+      // com instâncias rodando.
+      handle.server.emit('exit', 0);
+      handle.web?.emit('exit', 0);
+    },
     findFreePort: async (start: number, _host?: string, exclude = new Set<number>()) => {
       let port = start;
       while (exclude.has(port)) port++;
@@ -74,7 +80,7 @@ describe('GET /api/board/domains', () => {
     const body = res.json() as { domains: { slug: string; projects: { name: string }[] }[] };
     expect(body.domains.map((d) => d.slug).sort()).toEqual(['rh', 'vendas']);
     const found = body.domains.find((d) => d.slug === vendas.slug)!;
-    expect(found.projects).toHaveLength(1); // default criado pelo ensureRegistry
+    expect(found.projects).toHaveLength(0); // listagem é read-only agora — não semeia projeto default
   });
 });
 
@@ -132,10 +138,12 @@ describe('DELETE /api/board/domains/:id', () => {
   it('para as instâncias do domínio antes de apagar', async () => {
     const { app, instances } = await buildApp();
     const domain = await createDomain(app, 'Comrodando');
-    const domainsRes = await app.inject({ method: 'GET', url: '/api/board/domains' });
-    const projectId = (
-      domainsRes.json() as { domains: { id: string; projects: { id: string }[] }[] }
-    ).domains.find((d) => d.id === domain.id)!.projects[0].id;
+    const projectRes = await app.inject({
+      method: 'POST',
+      url: '/api/board/projects',
+      payload: { domainId: domain.id, name: 'Q1' },
+    });
+    const { id: projectId } = projectRes.json() as { id: string };
 
     const launch = await app.inject({
       method: 'POST',
@@ -183,10 +191,12 @@ describe('POST /api/board/instances', () => {
   it('lança a instância e ela aparece em GET /api/board/instances', async () => {
     const { app } = await buildApp();
     const domain = await createDomain(app, 'Vendas');
-    const domainsRes = await app.inject({ method: 'GET', url: '/api/board/domains' });
-    const project = (
-      domainsRes.json() as { domains: { id: string; projects: { id: string; slug: string }[] }[] }
-    ).domains[0].projects[0];
+    const projectRes = await app.inject({
+      method: 'POST',
+      url: '/api/board/projects',
+      payload: { domainId: domain.id, name: 'Q1' },
+    });
+    const project = projectRes.json() as { id: string };
 
     const res = await app.inject({
       method: 'POST',
@@ -218,10 +228,12 @@ describe('DELETE /api/board/instances/:id', () => {
   it('para a instância e some da listagem', async () => {
     const { app, instances } = await buildApp();
     const domain = await createDomain(app, 'Vendas');
-    const domainsRes = await app.inject({ method: 'GET', url: '/api/board/domains' });
-    const project = (
-      domainsRes.json() as { domains: { id: string; projects: { id: string }[] }[] }
-    ).domains[0].projects[0];
+    const projectRes = await app.inject({
+      method: 'POST',
+      url: '/api/board/projects',
+      payload: { domainId: domain.id, name: 'Q1' },
+    });
+    const project = projectRes.json() as { id: string };
     const launch = await app.inject({
       method: 'POST',
       url: '/api/board/instances',
