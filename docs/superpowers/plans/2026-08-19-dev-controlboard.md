@@ -920,8 +920,12 @@ export function registerControlboardRoutes(app: FastifyInstance, instances: Inst
     } catch (e: any) {
       return reply.code(404).send({ error: e.message });
     }
-    const projects = await listProjectsForDomain(domain.slug);
-    setActiveDomainSlug(null);
+    let projects;
+    try {
+      projects = await listProjectsForDomain(domain.slug);
+    } finally {
+      setActiveDomainSlug(null);
+    }
     const project = projects.find((p) => p.id === projectId);
     if (!project) return reply.code(404).send({ error: 'Projeto não encontrado.' });
     try {
