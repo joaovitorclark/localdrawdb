@@ -86,6 +86,20 @@ extraia numa pasta qualquer e dê duplo-clique em
 ficam na pasta `data/` ao lado do executável, então mover a pasta inteira
 (inclusive pra um pendrive) leva tudo junto.
 
+O app abre numa **janela de aplicativo** (sem barra de endereço nem abas),
+usando o Microsoft Edge que já vem no Windows — e cria um atalho na Área de
+Trabalho na primeira execução. Se o Edge não estiver disponível, ele abre no
+navegador padrão normalmente. Apagar o atalho não o faz voltar; para recriá-lo,
+apague `data/.desktop-shortcut-attempted` e abra o app de novo.
+
+A janela usa um perfil próprio do Edge em `data/edge-profile/` (não interfere
+no seu Edge do dia a dia). Apagar essa pasta é seguro — ela é recriada no
+próximo uso.
+
+Fechar a janela do app (Edge) **não** encerra o servidor — ele continua
+rodando em segundo plano. Para encerrar de verdade, feche a janela de console
+do `LocalDrawDB.exe` (ou finalize o processo pelo Gerenciador de Tarefas).
+
 Recursos de git (clonar, pull, commit, push) dependem do
 [Git for Windows](https://git-scm.com/download/win) instalado; sem ele o app
 funciona normalmente com domínios locais e avisa nas ações de git.
