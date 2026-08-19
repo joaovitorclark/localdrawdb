@@ -130,6 +130,9 @@ export async function getStatus(dir: string): Promise<GitStatus> {
 export async function switchBranch(dir: string, branch: string, create = false): Promise<void> {
   // Sem pré-check de dirty: criar branch (`switch -c`) leva os arquivos sujos
   // junto, como o git. Trocar para existente recusa só se o git recusar.
+  // Repo recém-anexado (HEAD unborn) não tem `main` de verdade — um
+  // `switch -c feat` sozinho abandonaria o unborn e a lista ficaria só com feat.
+  if (create) await ensureInitialCommit(dir);
   await run(dir, create ? ['switch', '-c', branch] : ['switch', branch]);
 }
 
@@ -183,13 +186,41 @@ export async function remoteUrl(dir: string): Promise<string | null> {
 
 export async function cloneRepo(url: string, destDir: string): Promise<void> {
   await run(path.dirname(destDir), ['clone', url, destDir]);
+  await ensureInitialCommit(destDir);
 }
 
 export async function initRepo(dir: string, remoteUrl?: string): Promise<void> {
-  await run(dir, ['init']);
+  await run(dir, ['init', '-b', 'main']);
   if (remoteUrl) {
     await run(dir, ['remote', 'add', 'origin', remoteUrl]);
   }
+  await ensureInitialCommit(dir);
+}
+
+async function hasHead(dir: string): Promise<boolean> {
+  try {
+    await run(dir, ['rev-parse', '--verify', 'HEAD']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Commit inicial em `main` quando o repo ainda não tem HEAD (GitHub vazio / git init). */
+async function ensureInitialCommit(dir: string): Promise<void> {
+  if (await hasHead(dir)) return;
+  await run(dir, ['add', '-A']);
+  // Identidade própria: testes e máquinas sem user.name não podem falhar aqui.
+  await run(dir, [
+    '-c',
+    'user.name=LocalDrawDB',
+    '-c',
+    'user.email=localdrawdb@localhost',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'Initial commit',
+  ]);
 }
 
 export async function credentialApprove(

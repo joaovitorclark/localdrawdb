@@ -109,12 +109,62 @@ describe('switchBranch', () => {
     expect(execFileMock.mock.calls[0][1]).toEqual(['switch', 'outra']);
   });
 
-  it('usa `switch -c` quando create=true, mesmo com árvore suja (não chama status)', async () => {
+  it('usa `switch -c` quando create=true e já existe HEAD', async () => {
+    mockExecFileOnce('abc123'); // rev-parse --verify HEAD
     mockExecFileOnce('');
     const { switchBranch } = await import('../git.ts');
     await switchBranch('/tmp/repo', 'nova', true);
-    expect(execFileMock.mock.calls[0][1]).toEqual(['switch', '-c', 'nova']);
-    expect(execFileMock).toHaveBeenCalledTimes(1);
+    expect(execFileMock.mock.calls[1][1]).toEqual(['switch', '-c', 'nova']);
+    expect(execFileMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('sem HEAD, grava Initial commit antes de criar a branch (para main existir)', async () => {
+    mockExecFileFail('ambiguous argument HEAD');
+    mockExecFileOnce(''); // add -A
+    mockExecFileOnce(''); // commit --allow-empty
+    mockExecFileOnce(''); // switch -c nova
+    const { switchBranch } = await import('../git.ts');
+    await switchBranch('/tmp/repo', 'nova', true);
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds[0]).toEqual(['rev-parse', '--verify', 'HEAD']);
+    expect(cmds[1]).toEqual(['add', '-A']);
+    expect(cmds[2]).toEqual([
+      '-c',
+      'user.name=LocalDrawDB',
+      '-c',
+      'user.email=localdrawdb@localhost',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'Initial commit',
+    ]);
+    expect(cmds[3]).toEqual(['switch', '-c', 'nova']);
+  });
+});
+
+describe('initRepo', () => {
+  it('init -b main e commit inicial quando não há HEAD', async () => {
+    mockExecFileOnce(''); // init -b main
+    mockExecFileFail('no HEAD');
+    mockExecFileOnce(''); // add -A
+    mockExecFileOnce(''); // commit
+    const { initRepo } = await import('../git.ts');
+    await initRepo('/tmp/repo');
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds[0]).toEqual(['init', '-b', 'main']);
+    expect(cmds.some((a) => a[0] === 'commit' || a.includes('commit'))).toBe(true);
+  });
+
+  it('não recommita se HEAD já existe', async () => {
+    mockExecFileOnce(''); // init -b main
+    mockExecFileOnce('https://github.com/a/b.git'); // remote add — wait, only if remoteUrl
+    mockExecFileOnce('deadbeef'); // hasHead
+    const { initRepo } = await import('../git.ts');
+    await initRepo('/tmp/repo', 'https://github.com/a/b.git');
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds[0]).toEqual(['init', '-b', 'main']);
+    expect(cmds[1]).toEqual(['remote', 'add', 'origin', 'https://github.com/a/b.git']);
+    expect(cmds.some((a) => a.includes('commit'))).toBe(false);
   });
 });
 

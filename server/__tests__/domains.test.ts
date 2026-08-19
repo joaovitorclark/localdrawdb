@@ -50,6 +50,21 @@ describe('attachGitToDomain', () => {
     expect(updated.hasGit).toBe(true);
     expect(updated.remoteUrl).toBeNull();
   });
+
+  it('grava commit inicial em main para o HEAD unborn não sumir ao criar outra branch', async () => {
+    const { createLocalDomain, attachGitToDomain } = await import('../domains.ts');
+    const { currentBranch, getStatus, switchBranch } = await import('../git.ts');
+    const d = await createLocalDomain('Com Commit Inicial');
+    await attachGitToDomain(d.id);
+    expect(await currentBranch(d.dir)).toBe('main');
+    const before = await getStatus(d.dir);
+    expect(before.branches).toContain('main');
+
+    await switchBranch(d.dir, 'feat-x', true);
+    const after = await getStatus(d.dir);
+    expect(after.branch).toBe('feat-x');
+    expect(after.branches).toEqual(expect.arrayContaining(['main', 'feat-x']));
+  });
 });
 
 describe('activateDomain', () => {
