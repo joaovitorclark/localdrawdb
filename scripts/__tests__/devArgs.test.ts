@@ -5,6 +5,9 @@ describe('parseDevArgs', () => {
   it('sem flags = controlboard (board)', () => {
     expect(parseDevArgs([])).toEqual({ mode: 'board', slugs: null, preview: false });
   });
+  it('--preview sozinho (sem --all/--shared/slug) continua = todos em preview', () => {
+    expect(parseDevArgs(['--preview'])).toEqual({ mode: 'all', slugs: null, preview: true });
+  });
   it('--shared = instância única compartilhada', () => {
     expect(parseDevArgs(['--shared'])).toEqual({ mode: 'shared', slugs: null, preview: false });
   });
