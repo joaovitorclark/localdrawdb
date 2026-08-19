@@ -308,6 +308,9 @@ export const cloneDomain = (url: string, name?: string): Promise<DomainMeta> =>
 export const attachGitToDomain = (id: string, remoteUrl?: string): Promise<DomainMeta> =>
   post(`/api/domains/${id}/attach-git`, { remoteUrl });
 
+export const deleteDomain = (id: string): Promise<void> =>
+  del<{ ok: boolean }>(`/api/domains/${id}`).then(() => {});
+
 export const activateDomain = (id: string): Promise<{ ok: boolean; domain: DomainMeta }> =>
   post(`/api/domains/${id}/activate`, {});
 

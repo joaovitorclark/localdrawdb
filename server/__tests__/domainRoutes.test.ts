@@ -94,6 +94,29 @@ describe('POST /api/domains/:id/activate', () => {
   });
 });
 
+describe('DELETE /api/domains/:id', () => {
+  it('remove o domínio e a pasta local', async () => {
+    const app = await buildApp();
+    await createDomain(app, 'Fica');
+    const gone = await createDomain(app, 'Sai');
+    const res = await app.inject({ method: 'DELETE', url: `/api/domains/${gone.id}` });
+    expect(res.statusCode).toBe(200);
+
+    const listed = await app.inject({ method: 'GET', url: '/api/domains' });
+    await app.close();
+    const body = listed.json() as { domains: { slug: string }[] };
+    expect(body.domains.map((d) => d.slug)).toEqual(['fica']);
+    await expect(fs.stat(gone.dir)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('404 para id inexistente', async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: 'DELETE', url: '/api/domains/nao-existe' });
+    await app.close();
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 describe('POST /api/domains/clone', () => {
   it('400 sem url', async () => {
     const app = await buildApp();

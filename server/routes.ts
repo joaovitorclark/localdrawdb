@@ -30,6 +30,7 @@ import { registerExportRoutes } from './routes/exportRoutes.ts';
 import { registerDomainRoutes } from './routes/domainRoutes.ts';
 import { isGitAvailable } from './git.ts';
 import { getActiveDomainSlug } from './domainContext.ts';
+import { seedGitIfNeeded } from './domains.ts';
 
 type ProjectBody = { dbml?: string; canvas?: unknown };
 type DbmlBody = { dbml?: string };
@@ -317,6 +318,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (pin) return { ok: true, pinned: pin };
     try {
       await setActiveProject(req.params.id);
+      await seedGitIfNeeded();
       return { ok: true, activeId: req.params.id };
     } catch (e: any) {
       if (e?.message?.includes('não encontrado')) {

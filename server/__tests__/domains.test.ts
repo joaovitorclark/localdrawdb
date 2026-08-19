@@ -67,6 +67,45 @@ describe('attachGitToDomain', () => {
   });
 });
 
+describe('cloneDomain vazio + activateDomain', () => {
+  it('ao abrir, grava README e first commit e envia para o origin mesmo sem edição', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    const bare = path.join(tmpDir, 'testea.git');
+    await exec('git', ['init', '--bare', '--initial-branch=main', bare]);
+
+    const { cloneDomain, activateDomain } = await import('../domains.ts');
+    const d = await cloneDomain(bare, 'testea');
+    await activateDomain(d.id);
+
+    expect(await fs.readFile(path.join(d.dir, 'README.md'), 'utf8')).toBe('# testea\n');
+    const log = await exec('git', ['-C', d.dir, 'log', '-1', '--pretty=%s']);
+    expect(log.stdout.trim()).toBe('first commit');
+    const dirty = await exec('git', ['-C', d.dir, 'status', '--porcelain']);
+    expect(dirty.stdout.trim()).toBe('');
+    await exec('git', ['-C', bare, 'rev-parse', 'refs/heads/main']);
+  });
+});
+
+describe('deleteDomain', () => {
+  it('tira da lista e apaga a pasta local', async () => {
+    const { createLocalDomain, deleteDomain, listDomains } = await import('../domains.ts');
+    const keep = await createLocalDomain('Fica');
+    const gone = await createLocalDomain('Sai');
+    await deleteDomain(gone.id);
+
+    const all = await listDomains();
+    expect(all.map((d) => d.id)).toEqual([keep.id]);
+    await expect(fs.stat(gone.dir)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('lança para id inexistente', async () => {
+    const { deleteDomain } = await import('../domains.ts');
+    await expect(deleteDomain('nao-existe')).rejects.toThrow(/não encontrado/i);
+  });
+});
+
 describe('activateDomain', () => {
   // Duas regressões distintas são cobertas aqui:
   // - ORDEM: o slug precisa estar ativo no instante em que `ensureRegistry()`

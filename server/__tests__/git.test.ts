@@ -118,10 +118,11 @@ describe('switchBranch', () => {
     expect(execFileMock).toHaveBeenCalledTimes(2);
   });
 
-  it('sem HEAD, grava Initial commit antes de criar a branch (para main existir)', async () => {
+  it('sem HEAD, grava first commit antes de criar a branch (para main existir)', async () => {
     mockExecFileFail('ambiguous argument HEAD');
     mockExecFileOnce(''); // add -A
     mockExecFileOnce(''); // commit --allow-empty
+    mockExecFileOnce(''); // branch -M main
     mockExecFileOnce(''); // switch -c nova
     const { switchBranch } = await import('../git.ts');
     await switchBranch('/tmp/repo', 'nova', true);
@@ -136,35 +137,71 @@ describe('switchBranch', () => {
       'commit',
       '--allow-empty',
       '-m',
-      'Initial commit',
+      'first commit',
     ]);
-    expect(cmds[3]).toEqual(['switch', '-c', 'nova']);
+    expect(cmds[3]).toEqual(['branch', '-M', 'main']);
+    expect(cmds[4]).toEqual(['switch', '-c', 'nova']);
   });
 });
 
 describe('initRepo', () => {
-  it('init -b main e commit inicial quando não há HEAD', async () => {
+  it('init -b main e first commit quando não há HEAD', async () => {
     mockExecFileOnce(''); // init -b main
-    mockExecFileFail('no HEAD');
+    mockExecFileFail('no HEAD'); // bootstrap early: hasHead
+    mockExecFileFail('no origin'); // remote get-url
+    mockExecFileFail('no HEAD'); // headed
     mockExecFileOnce(''); // add -A
     mockExecFileOnce(''); // commit
+    mockExecFileOnce(''); // branch -M main
     const { initRepo } = await import('../git.ts');
     await initRepo('/tmp/repo');
     const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
     expect(cmds[0]).toEqual(['init', '-b', 'main']);
-    expect(cmds.some((a) => a[0] === 'commit' || a.includes('commit'))).toBe(true);
+    expect(cmds.some((a) => a.includes('first commit') || a.includes('commit'))).toBe(true);
+    expect(cmds).toContainEqual(['branch', '-M', 'main']);
   });
 
-  it('não recommita se HEAD já existe', async () => {
+  it('não recommita se origin/main já existe', async () => {
     mockExecFileOnce(''); // init -b main
-    mockExecFileOnce('https://github.com/a/b.git'); // remote add — wait, only if remoteUrl
+    mockExecFileOnce('https://github.com/a/b.git'); // remote add
     mockExecFileOnce('deadbeef'); // hasHead
+    mockExecFileOnce('origin/main'); // hasUpstream
     const { initRepo } = await import('../git.ts');
     await initRepo('/tmp/repo', 'https://github.com/a/b.git');
     const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
     expect(cmds[0]).toEqual(['init', '-b', 'main']);
     expect(cmds[1]).toEqual(['remote', 'add', 'origin', 'https://github.com/a/b.git']);
     expect(cmds.some((a) => a.includes('commit'))).toBe(false);
+  });
+});
+
+describe('bootstrapEmptyRepo', () => {
+  it('não faz nada se origin/main já existe', async () => {
+    mockExecFileOnce('abc123'); // hasHead
+    mockExecFileOnce('origin/main'); // hasUpstream
+    const { bootstrapEmptyRepo } = await import('../git.ts');
+    await bootstrapEmptyRepo('/tmp/repo');
+    expect(execFileMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('first commit e push mesmo com working tree suja (abrir projeto sem editar)', async () => {
+    mockExecFileOnce('abc123'); // hasHead
+    mockExecFileFail('no origin/main'); // hasUpstream
+    mockExecFileOnce('https://github.com/a/testea.git'); // get-url
+    mockExecFileOnce(''); // ls-remote vazio
+    mockExecFileOnce('abc123'); // headed
+    mockExecFileOnce('?? projects.json'); // dirty
+    mockExecFileOnce(''); // add
+    mockExecFileOnce('?? projects.json'); // porcelain after add
+    mockExecFileOnce(''); // commit
+    mockExecFileOnce(''); // branch -M
+    mockExecFileOnce('abc123'); // hasHead before push
+    mockExecFileOnce(''); // push
+    const { bootstrapEmptyRepo } = await import('../git.ts');
+    await bootstrapEmptyRepo('/tmp/repo');
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds.some((a) => a.includes('first commit'))).toBe(true);
+    expect(cmds).toContainEqual(['push', '-u', 'origin', 'main']);
   });
 });
 

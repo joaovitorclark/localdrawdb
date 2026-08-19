@@ -9,9 +9,10 @@ import {
   domainsRootDir,
   domainsRegistryPath,
   domainDirFor,
+  getActiveDomainSlug,
   setActiveDomainSlug,
 } from './domainContext.ts';
-import { isGitRepo, remoteUrl as gitRemoteUrl, cloneRepo, initRepo } from './git.ts';
+import { isGitRepo, remoteUrl as gitRemoteUrl, cloneRepo, initRepo, bootstrapEmptyRepo } from './git.ts';
 import { ensureRegistry } from './files.ts';
 
 export interface DomainRecord {
@@ -146,7 +147,43 @@ export async function activateDomain(id: string): Promise<DomainMeta> {
   const meta = await getDomain(id);
   setActiveDomainSlug(meta.slug);
   await ensureRegistry();
-  return meta;
+  await seedGitIfNeeded(meta);
+  return getDomain(id);
+}
+
+/**
+ * First commit da página vazia do GitHub ao conectar ou abrir um projeto,
+ * mesmo sem o usuário editar nada. No-op se o domínio não é git.
+ */
+export async function seedGitIfNeeded(meta?: { dir: string; hasGit: boolean }): Promise<void> {
+  try {
+    if (meta) {
+      if (!meta.hasGit) return;
+      await bootstrapEmptyRepo(meta.dir);
+      return;
+    }
+    const slug = getActiveDomainSlug();
+    if (!slug) return;
+    const dir = domainDirFor(slug);
+    if (!(await isGitRepo(dir))) return;
+    await bootstrapEmptyRepo(dir);
+  } catch {
+    // push pode falhar sem credencial; o domínio/projeto abre do mesmo jeito
+  }
+}
+
+/** Remove o domínio da lista e apaga a pasta local. O remoto no GitHub não é tocado. */
+export async function deleteDomain(id: string): Promise<void> {
+  const reg = await readDomainsRegistry();
+  const idx = reg.domains.findIndex((d) => d.id === id);
+  if (idx === -1) throw new Error(`Domínio não encontrado: ${id}`);
+  const [removed] = reg.domains.splice(idx, 1);
+  await writeDomainsRegistry(reg);
+  if (getActiveDomainSlug() === removed.slug) {
+    setActiveDomainSlug(null);
+  }
+  const dir = domainDirFor(removed.slug);
+  await fs.rm(dir, { recursive: true, force: true });
 }
 
 async function pathExists(p: string): Promise<boolean> {

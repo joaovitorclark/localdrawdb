@@ -62,6 +62,15 @@ describe('attachGitToDomain', () => {
   });
 });
 
+describe('deleteDomain', () => {
+  it('faz DELETE na rota do domínio', async () => {
+    mockFetchOnce(200, { ok: true });
+    const api = await import('../api.ts');
+    await api.deleteDomain('dom-1');
+    expect(fetch).toHaveBeenCalledWith('/api/domains/dom-1', expect.objectContaining({ method: 'DELETE' }));
+  });
+});
+
 describe('activateDomain', () => {
   it('faz POST na rota activate', async () => {
     mockFetchOnce(200, { ok: true, domain: { id: 'dom-1' } });

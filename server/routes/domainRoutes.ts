@@ -9,6 +9,7 @@ import {
   attachGitToDomain,
   getDomain,
   activateDomain,
+  deleteDomain,
 } from '../domains.ts';
 import { getStatus, switchBranch, pull, commit, push, remoteUrl, credentialApprove } from '../git.ts';
 import { buildPrUrl } from '../prUrl.ts';
@@ -78,6 +79,16 @@ export function registerDomainRoutes(app: FastifyInstance): void {
       return { ok: true, domain };
     } catch (e: any) {
       return reply.code(404).send({ error: errorMessage(e, 'Domínio não encontrado.') });
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/domains/:id', async (req, reply) => {
+    try {
+      await deleteDomain(req.params.id);
+      return { ok: true };
+    } catch (e: any) {
+      if (isNotFound(e)) return reply.code(404).send({ error: e.message });
+      return reply.code(422).send({ error: errorMessage(e, 'Falha ao remover o domínio.') });
     }
   });
 

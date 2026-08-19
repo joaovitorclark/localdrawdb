@@ -2968,6 +2968,44 @@ body {
   background: var(--hover-bg, #f3f3f3);
 }
 
+.domain-picker__row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.domain-picker__row .domain-picker__item {
+  flex: 1;
+  min-width: 0;
+  padding-right: 36px;
+}
+
+.domain-picker__remove {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 1px rgba(15, 23, 42, 0.35));
+}
+
+.domain-picker__remove:hover {
+  color: #e11d48;
+  opacity: 1;
+  background: transparent;
+  filter: none;
+}
+
 .domain-picker__badge {
   flex: none;
   padding: 1px 6px;

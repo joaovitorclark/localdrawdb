@@ -105,6 +105,23 @@ export function DomainPicker({ onOpened }: { onOpened: (domain: DomainMeta) => v
     }
   }, [selectedDomain, attachUrl]);
 
+  const handleRemoveDomain = useCallback(
+    async (domain: DomainMeta) => {
+      const ok = window.confirm(
+        `Apagar "${domain.name}" deste computador? O repositório no GitHub não será alterado.`,
+      );
+      if (!ok) return;
+      setError(null);
+      try {
+        await api.deleteDomain(domain.id);
+        await refreshDomains();
+      } catch (e: unknown) {
+        setError((e as Error).message);
+      }
+    },
+    [refreshDomains],
+  );
+
   const handleCreateProject = useCallback(async () => {
     if (!newProjectName.trim()) return;
     setError(null);
@@ -135,14 +152,33 @@ export function DomainPicker({ onOpened }: { onOpened: (domain: DomainMeta) => v
         <section className="domain-picker__list">
           <h2>Escolha um domínio</h2>
           {sortDomainsByName(domains).map((d) => (
-            <button key={d.id} className="domain-picker__item" onClick={() => void openDomain(d)}>
-              <span
-                className={`domain-picker__badge domain-picker__badge--${d.hasGit ? 'git' : 'local'}`}
+            <div key={d.id} className="domain-picker__row">
+              <button type="button" className="domain-picker__item" onClick={() => void openDomain(d)}>
+                <span
+                  className={`domain-picker__badge domain-picker__badge--${d.hasGit ? 'git' : 'local'}`}
+                >
+                  {domainBadge(d)}
+                </span>
+                <span className="domain-picker__name">{d.name}</span>
+              </button>
+              <button
+                type="button"
+                className="domain-picker__remove"
+                title="Remover deste computador"
+                aria-label={`Remover ${d.name}`}
+                onClick={() => void handleRemoveDomain(d)}
               >
-                {domainBadge(d)}
-              </span>
-              <span className="domain-picker__name">{d.name}</span>
-            </button>
+                <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+                  <path
+                    d="M2.2 2.2l7.6 7.6M9.8 2.2l-7.6 7.6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
           ))}
 
           {newDomainMode === null ? (
