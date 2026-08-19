@@ -19,6 +19,23 @@ describe('findFreePort', () => {
     held.close();
   });
 
+  it('nao devolve porta ocupada só em IPv6 (::1), que o Vite usa no macOS', async () => {
+    let held;
+    try {
+      held = await holdPort(0, '::1');
+    } catch {
+      return; // máquina sem IPv6 — nada a provar
+    }
+    const addr = held.address();
+    const port = typeof addr === 'object' && addr ? addr.port : 0;
+    try {
+      const next = await findFreePort(port, '127.0.0.1');
+      expect(next).not.toBe(port);
+    } finally {
+      held.close();
+    }
+  });
+
   it('aloca par api/web distinto quando a base esta ocupada', async () => {
     const held = await holdPort(0);
     const addr = held.address();
