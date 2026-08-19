@@ -29,10 +29,10 @@ function redactCredentials(text: string): string {
 // - `timeout`: rede lenta/remote inacessível não pode virar request eterno.
 // - `maxBuffer`: saídas grandes (clone verboso, status enorme) não podem matar
 //   o comando com ENOBUFS no default de 1MB.
-function spawnOptions(cwd: string) {
+function spawnOptions(cwd: string, timeout = 30_000) {
   return {
     cwd,
-    timeout: 30_000,
+    timeout,
     maxBuffer: 10 * 1024 * 1024,
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
   };
@@ -44,11 +44,12 @@ export interface GitStatus {
   behind: number;
   dirty: boolean;
   files: string[];
+  branches: string[];
 }
 
-function run(cwd: string, args: string[], opts: { trim?: boolean } = {}): Promise<string> {
+function run(cwd: string, args: string[], opts: { trim?: boolean; timeout?: number } = {}): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('git', args, spawnOptions(cwd), (err, stdout, stderr) => {
+    execFile('git', args, spawnOptions(cwd, opts.timeout), (err, stdout, stderr) => {
       if (err) {
         // `||` e não `??`: numa falha de spawn (git fora do PATH, cwd inexistente)
         // `err.stderr` é undefined e `stderr` chega como string vazia — que não é
@@ -112,6 +113,7 @@ export async function getStatus(dir: string): Promise<GitStatus> {
   const branch = await currentBranch(dir);
   const porcelain = await run(dir, ['status', '--porcelain'], { trim: false });
   const files = porcelain ? porcelain.split('\n').map((l) => l.slice(3).trim()) : [];
+  const branches = await listBranches(dir);
   let ahead = 0;
   let behind = 0;
   try {
@@ -122,14 +124,15 @@ export async function getStatus(dir: string): Promise<GitStatus> {
   } catch {
     // sem upstream configurado — sem ahead/behind, não é um erro fatal
   }
-  return { branch, ahead, behind, dirty: files.length > 0, files };
+  return { branch, ahead, behind, dirty: files.length > 0, files, branches };
 }
 
 export async function switchBranch(dir: string, branch: string, create = false): Promise<void> {
-  const status = await getStatus(dir);
-  if (status.dirty) {
-    throw new Error('Há mudanças não commitadas — salve ou commite antes de trocar de branch.');
-  }
+  // Sem pré-check de dirty: criar branch (`switch -c`) leva os arquivos sujos
+  // junto, como o git. Trocar para existente recusa só se o git recusar.
+  // Repo recém-anexado (HEAD unborn) não tem `main` de verdade — um
+  // `switch -c feat` sozinho abandonaria o unborn e a lista ficaria só com feat.
+  if (create) await ensureInitialCommit(dir);
   await run(dir, create ? ['switch', '-c', branch] : ['switch', branch]);
 }
 
@@ -141,16 +144,36 @@ export async function pull(dir: string): Promise<void> {
   await run(dir, ['pull']);
 }
 
-export async function commitAndPush(dir: string, message: string): Promise<{ branch: string }> {
+export async function commit(dir: string, message: string): Promise<{ branch: string }> {
   const branch = await currentBranch(dir);
   await run(dir, ['add', '-A']);
   const pending = await run(dir, ['status', '--porcelain']);
   if (!pending) {
-    throw new Error('Nada para publicar — nenhuma mudança pendente.');
+    throw new Error('Nada para commitar.');
   }
   await run(dir, ['commit', '-m', message]);
-  await run(dir, ['push', '-u', 'origin', branch]);
   return { branch };
+}
+
+async function hasUpstream(dir: string, branch: string): Promise<boolean> {
+  try {
+    await run(dir, ['rev-parse', '--verify', `origin/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function push(dir: string): Promise<{ branch: string }> {
+  const status = await getStatus(dir);
+  if (status.dirty) {
+    throw new Error('Há mudanças não commitadas — commite antes de enviar.');
+  }
+  if ((await hasUpstream(dir, status.branch)) && status.ahead === 0) {
+    throw new Error('Nada para enviar.');
+  }
+  await run(dir, ['push', '-u', 'origin', status.branch]);
+  return { branch: status.branch };
 }
 
 export async function remoteUrl(dir: string): Promise<string | null> {
@@ -162,13 +185,104 @@ export async function remoteUrl(dir: string): Promise<string | null> {
 }
 
 export async function cloneRepo(url: string, destDir: string): Promise<void> {
+  // Clone só. O first commit (README + arquivos do projeto) roda em
+  // `bootstrapEmptyRepo` ao conectar/abrir — senão o registry cria projetos
+  // depois e o GitHub fica com commit vazio + working tree suja.
   await run(path.dirname(destDir), ['clone', url, destDir]);
 }
 
 export async function initRepo(dir: string, remoteUrl?: string): Promise<void> {
-  await run(dir, ['init']);
+  await run(dir, ['init', '-b', 'main']);
   if (remoteUrl) {
     await run(dir, ['remote', 'add', 'origin', remoteUrl]);
+  }
+  await bootstrapEmptyRepo(dir);
+}
+
+async function hasHead(dir: string): Promise<boolean> {
+  try {
+    await run(dir, ['rev-parse', '--verify', 'HEAD']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeReadmeIfMissing(dir: string): Promise<void> {
+  const file = path.join(dir, 'README.md');
+  try {
+    await fs.access(file);
+    return;
+  } catch {
+    // ainda não existe
+  }
+  try {
+    await fs.writeFile(file, `# ${path.basename(dir)}\n`, 'utf8');
+  } catch {
+    // unit tests com cwd fictício; o commit --allow-empty ainda cria o HEAD
+  }
+}
+
+async function gitCommitFirst(dir: string, allowEmpty: boolean): Promise<void> {
+  await run(dir, ['add', '-A']);
+  if (!allowEmpty) {
+    const pending = await run(dir, ['status', '--porcelain']);
+    if (!pending) return;
+  }
+  await run(dir, [
+    '-c',
+    'user.name=LocalDrawDB',
+    '-c',
+    'user.email=localdrawdb@localhost',
+    'commit',
+    ...(allowEmpty ? (['--allow-empty'] as const) : []),
+    '-m',
+    'first commit',
+  ]);
+  await run(dir, ['branch', '-M', 'main']);
+}
+
+/** Commit inicial em `main` quando o repo ainda não tem HEAD (GitHub vazio / git init). */
+async function ensureInitialCommit(dir: string): Promise<void> {
+  if (await hasHead(dir)) return;
+  await writeReadmeIfMissing(dir);
+  await gitCommitFirst(dir, true);
+}
+
+/**
+ * Sequência da página vazia do GitHub, mesmo sem o usuário editar nada:
+ * README, `first commit`, `main`, `push -u origin main`.
+ * No-op se `origin/main` já existe (já publicou). Push falho não lança.
+ */
+export async function bootstrapEmptyRepo(dir: string): Promise<void> {
+  // Já enviado: não auto-commita trabalho sujo em repo que já tem histórico remoto.
+  if ((await hasHead(dir)) && (await hasUpstream(dir, 'main'))) return;
+
+  await writeReadmeIfMissing(dir);
+  const origin = await remoteUrl(dir);
+  let published = false;
+  if (origin) {
+    try {
+      published = Boolean(await run(dir, ['ls-remote', '--heads', 'origin'], { timeout: 8_000 }));
+    } catch {
+      published = false;
+    }
+  }
+
+  const headed = await hasHead(dir);
+  if (!headed) {
+    await gitCommitFirst(dir, true);
+  } else if (!published) {
+    const dirty = Boolean(await run(dir, ['status', '--porcelain']));
+    if (dirty) await gitCommitFirst(dir, false);
+  }
+
+  if (origin && !published && (await hasHead(dir))) {
+    try {
+      await run(dir, ['push', '-u', 'origin', 'main'], { timeout: 20_000 });
+    } catch {
+      // sem credencial de escrita — commit local já está feito
+    }
   }
 }
 

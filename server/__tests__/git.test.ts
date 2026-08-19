@@ -51,14 +51,16 @@ describe('isGitAvailable', () => {
 
 describe('getStatus', () => {
   it('parseia branch, dirty e arquivos modificados', async () => {
-    mockExecFileOnce('main'); // rev-parse --abbrev-ref HEAD
+    mockExecFileOnce('main'); // branch --show-current
     mockExecFileOnce(' M src/App.tsx\n?? novo.txt'); // status --porcelain
+    mockExecFileOnce('main'); // listBranches
     mockExecFileFail('no upstream'); // rev-list ahead/behind (sem upstream)
     const { getStatus } = await import('../git.ts');
     const status = await getStatus('/tmp/repo');
     expect(status.branch).toBe('main');
     expect(status.dirty).toBe(true);
     expect(status.files).toEqual(['src/App.tsx', 'novo.txt']);
+    expect(status.branches).toEqual(['main']);
     expect(status.ahead).toBe(0);
     expect(status.behind).toBe(0);
   });
@@ -66,6 +68,7 @@ describe('getStatus', () => {
   it('sem mudanças pendentes: dirty=false', async () => {
     mockExecFileOnce('main');
     mockExecFileOnce('');
+    mockExecFileOnce('main');
     mockExecFileOnce('2\t1');
     const { getStatus } = await import('../git.ts');
     const status = await getStatus('/tmp/repo');
@@ -80,6 +83,7 @@ describe('pull', () => {
   it('bloqueia quando há mudanças não commitadas', async () => {
     mockExecFileOnce('main');
     mockExecFileOnce(' M src/App.tsx');
+    mockExecFileOnce('main');
     mockExecFileFail('no upstream');
     const { pull } = await import('../git.ts');
     await expect(pull('/tmp/repo')).rejects.toThrow(/não commitadas/i);
@@ -88,55 +92,173 @@ describe('pull', () => {
   it('roda `git pull` quando não há mudanças pendentes', async () => {
     mockExecFileOnce('main');
     mockExecFileOnce('');
+    mockExecFileOnce('main');
     mockExecFileOnce('0\t0');
     mockExecFileOnce('Already up to date.');
     const { pull } = await import('../git.ts');
     await expect(pull('/tmp/repo')).resolves.toBeUndefined();
-    expect(execFileMock).toHaveBeenCalledTimes(4);
+    expect(execFileMock).toHaveBeenCalledTimes(5);
   });
 });
 
 describe('switchBranch', () => {
-  it('bloqueia quando há mudanças não commitadas', async () => {
-    mockExecFileOnce('main');
-    mockExecFileOnce(' M src/App.tsx');
-    mockExecFileFail('no upstream');
+  it('usa `switch` sem pré-checar dirty quando create=false', async () => {
+    mockExecFileOnce('');
     const { switchBranch } = await import('../git.ts');
-    await expect(switchBranch('/tmp/repo', 'outra')).rejects.toThrow(/não commitadas/i);
+    await switchBranch('/tmp/repo', 'outra');
+    expect(execFileMock.mock.calls[0][1]).toEqual(['switch', 'outra']);
   });
 
-  it('usa `switch -c` quando create=true', async () => {
-    mockExecFileOnce('main');
-    mockExecFileOnce('');
-    mockExecFileOnce('0\t0');
+  it('usa `switch -c` quando create=true e já existe HEAD', async () => {
+    mockExecFileOnce('abc123'); // rev-parse --verify HEAD
     mockExecFileOnce('');
     const { switchBranch } = await import('../git.ts');
     await switchBranch('/tmp/repo', 'nova', true);
-    const lastCall = execFileMock.mock.calls.at(-1)!;
-    expect(lastCall[1]).toEqual(['switch', '-c', 'nova']);
+    expect(execFileMock.mock.calls[1][1]).toEqual(['switch', '-c', 'nova']);
+    expect(execFileMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('sem HEAD, grava first commit antes de criar a branch (para main existir)', async () => {
+    mockExecFileFail('ambiguous argument HEAD');
+    mockExecFileOnce(''); // add -A
+    mockExecFileOnce(''); // commit --allow-empty
+    mockExecFileOnce(''); // branch -M main
+    mockExecFileOnce(''); // switch -c nova
+    const { switchBranch } = await import('../git.ts');
+    await switchBranch('/tmp/repo', 'nova', true);
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds[0]).toEqual(['rev-parse', '--verify', 'HEAD']);
+    expect(cmds[1]).toEqual(['add', '-A']);
+    expect(cmds[2]).toEqual([
+      '-c',
+      'user.name=LocalDrawDB',
+      '-c',
+      'user.email=localdrawdb@localhost',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'first commit',
+    ]);
+    expect(cmds[3]).toEqual(['branch', '-M', 'main']);
+    expect(cmds[4]).toEqual(['switch', '-c', 'nova']);
   });
 });
 
-describe('commitAndPush', () => {
-  it('lança erro claro quando não há nada para publicar', async () => {
-    mockExecFileOnce('main'); // currentBranch
+describe('initRepo', () => {
+  it('init -b main e first commit quando não há HEAD', async () => {
+    mockExecFileOnce(''); // init -b main
+    mockExecFileFail('no HEAD'); // bootstrap early: hasHead
+    mockExecFileFail('no origin'); // remote get-url
+    mockExecFileFail('no HEAD'); // headed
     mockExecFileOnce(''); // add -A
-    mockExecFileOnce(''); // status --porcelain (vazio = nada pendente)
-    const { commitAndPush } = await import('../git.ts');
-    await expect(commitAndPush('/tmp/repo', 'msg')).rejects.toThrow(/nada para publicar/i);
+    mockExecFileOnce(''); // commit
+    mockExecFileOnce(''); // branch -M main
+    const { initRepo } = await import('../git.ts');
+    await initRepo('/tmp/repo');
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds[0]).toEqual(['init', '-b', 'main']);
+    expect(cmds.some((a) => a.includes('first commit') || a.includes('commit'))).toBe(true);
+    expect(cmds).toContainEqual(['branch', '-M', 'main']);
   });
 
-  it('commita e publica quando há mudanças', async () => {
-    mockExecFileOnce('main'); // currentBranch
-    mockExecFileOnce(''); // add -A
-    mockExecFileOnce(' M src/App.tsx'); // status --porcelain
+  it('não recommita se origin/main já existe', async () => {
+    mockExecFileOnce(''); // init -b main
+    mockExecFileOnce('https://github.com/a/b.git'); // remote add
+    mockExecFileOnce('deadbeef'); // hasHead
+    mockExecFileOnce('origin/main'); // hasUpstream
+    const { initRepo } = await import('../git.ts');
+    await initRepo('/tmp/repo', 'https://github.com/a/b.git');
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds[0]).toEqual(['init', '-b', 'main']);
+    expect(cmds[1]).toEqual(['remote', 'add', 'origin', 'https://github.com/a/b.git']);
+    expect(cmds.some((a) => a.includes('commit'))).toBe(false);
+  });
+});
+
+describe('bootstrapEmptyRepo', () => {
+  it('não faz nada se origin/main já existe', async () => {
+    mockExecFileOnce('abc123'); // hasHead
+    mockExecFileOnce('origin/main'); // hasUpstream
+    const { bootstrapEmptyRepo } = await import('../git.ts');
+    await bootstrapEmptyRepo('/tmp/repo');
+    expect(execFileMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('first commit e push mesmo com working tree suja (abrir projeto sem editar)', async () => {
+    mockExecFileOnce('abc123'); // hasHead
+    mockExecFileFail('no origin/main'); // hasUpstream
+    mockExecFileOnce('https://github.com/a/testea.git'); // get-url
+    mockExecFileOnce(''); // ls-remote vazio
+    mockExecFileOnce('abc123'); // headed
+    mockExecFileOnce('?? projects.json'); // dirty
+    mockExecFileOnce(''); // add
+    mockExecFileOnce('?? projects.json'); // porcelain after add
     mockExecFileOnce(''); // commit
+    mockExecFileOnce(''); // branch -M
+    mockExecFileOnce('abc123'); // hasHead before push
     mockExecFileOnce(''); // push
-    const { commitAndPush } = await import('../git.ts');
-    const result = await commitAndPush('/tmp/repo', 'minha mensagem');
-    expect(result).toEqual({ branch: 'main' });
-    const pushCall = execFileMock.mock.calls.at(-1)!;
-    expect(pushCall[1]).toEqual(['push', '-u', 'origin', 'main']);
+    const { bootstrapEmptyRepo } = await import('../git.ts');
+    await bootstrapEmptyRepo('/tmp/repo');
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds.some((a) => a.includes('first commit'))).toBe(true);
+    expect(cmds).toContainEqual(['push', '-u', 'origin', 'main']);
+  });
+});
+
+describe('commit', () => {
+  it('lança quando não há nada pendente após add', async () => {
+    mockExecFileOnce('main');
+    mockExecFileOnce('');
+    mockExecFileOnce('');
+    const { commit } = await import('../git.ts');
+    await expect(commit('/tmp/repo', 'msg')).rejects.toThrow(/nada para commitar/i);
+  });
+
+  it('add + commit, sem push', async () => {
+    mockExecFileOnce('main');
+    mockExecFileOnce('');
+    mockExecFileOnce(' M a.dbml');
+    mockExecFileOnce('');
+    const { commit } = await import('../git.ts');
+    await expect(commit('/tmp/repo', 'wip')).resolves.toEqual({ branch: 'main' });
+    const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
+    expect(cmds).toContainEqual(['add', '-A']);
+    expect(cmds).toContainEqual(['commit', '-m', 'wip']);
+    expect(cmds.some((a) => a[0] === 'push')).toBe(false);
+  });
+});
+
+describe('push', () => {
+  it('recusa working tree suja e não chama git push', async () => {
+    mockExecFileOnce('main');
+    mockExecFileOnce(' M a.dbml');
+    mockExecFileOnce('main');
+    mockExecFileFail('no upstream');
+    const { push } = await import('../git.ts');
+    await expect(push('/tmp/repo')).rejects.toThrow(/commite antes de enviar/i);
+    expect(execFileMock.mock.calls.some((c) => (c[1] as string[])[0] === 'push')).toBe(false);
+  });
+
+  it('recusa quando já tem upstream e ahead=0', async () => {
+    mockExecFileOnce('main');
+    mockExecFileOnce('');
+    mockExecFileOnce('main');
+    mockExecFileOnce('0\t0');
+    mockExecFileOnce('origin/main');
+    const { push } = await import('../git.ts');
+    await expect(push('/tmp/repo')).rejects.toThrow(/nada para enviar/i);
+  });
+
+  it('push -u quando não há upstream (branch nova)', async () => {
+    mockExecFileOnce('feat');
+    mockExecFileOnce('');
+    mockExecFileOnce('feat');
+    mockExecFileFail('no origin/feat');
+    mockExecFileFail('no origin/feat');
+    mockExecFileOnce('');
+    const { push } = await import('../git.ts');
+    await expect(push('/tmp/repo')).resolves.toEqual({ branch: 'feat' });
+    expect(execFileMock.mock.calls.at(-1)![1]).toEqual(['push', '-u', 'origin', 'feat']);
   });
 });
 

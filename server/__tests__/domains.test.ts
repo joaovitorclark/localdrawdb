@@ -50,6 +50,60 @@ describe('attachGitToDomain', () => {
     expect(updated.hasGit).toBe(true);
     expect(updated.remoteUrl).toBeNull();
   });
+
+  it('grava commit inicial em main para o HEAD unborn não sumir ao criar outra branch', async () => {
+    const { createLocalDomain, attachGitToDomain } = await import('../domains.ts');
+    const { currentBranch, getStatus, switchBranch } = await import('../git.ts');
+    const d = await createLocalDomain('Com Commit Inicial');
+    await attachGitToDomain(d.id);
+    expect(await currentBranch(d.dir)).toBe('main');
+    const before = await getStatus(d.dir);
+    expect(before.branches).toContain('main');
+
+    await switchBranch(d.dir, 'feat-x', true);
+    const after = await getStatus(d.dir);
+    expect(after.branch).toBe('feat-x');
+    expect(after.branches).toEqual(expect.arrayContaining(['main', 'feat-x']));
+  });
+});
+
+describe('cloneDomain vazio + activateDomain', () => {
+  it('ao abrir, grava README e first commit e envia para o origin mesmo sem edição', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    const bare = path.join(tmpDir, 'testea.git');
+    await exec('git', ['init', '--bare', '--initial-branch=main', bare]);
+
+    const { cloneDomain, activateDomain } = await import('../domains.ts');
+    const d = await cloneDomain(bare, 'testea');
+    await activateDomain(d.id);
+
+    expect(await fs.readFile(path.join(d.dir, 'README.md'), 'utf8')).toBe('# testea\n');
+    const log = await exec('git', ['-C', d.dir, 'log', '-1', '--pretty=%s']);
+    expect(log.stdout.trim()).toBe('first commit');
+    const dirty = await exec('git', ['-C', d.dir, 'status', '--porcelain']);
+    expect(dirty.stdout.trim()).toBe('');
+    await exec('git', ['-C', bare, 'rev-parse', 'refs/heads/main']);
+  });
+});
+
+describe('deleteDomain', () => {
+  it('tira da lista e apaga a pasta local', async () => {
+    const { createLocalDomain, deleteDomain, listDomains } = await import('../domains.ts');
+    const keep = await createLocalDomain('Fica');
+    const gone = await createLocalDomain('Sai');
+    await deleteDomain(gone.id);
+
+    const all = await listDomains();
+    expect(all.map((d) => d.id)).toEqual([keep.id]);
+    await expect(fs.stat(gone.dir)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('lança para id inexistente', async () => {
+    const { deleteDomain } = await import('../domains.ts');
+    await expect(deleteDomain('nao-existe')).rejects.toThrow(/não encontrado/i);
+  });
 });
 
 describe('activateDomain', () => {

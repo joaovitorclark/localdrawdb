@@ -2968,6 +2968,44 @@ body {
   background: var(--hover-bg, #f3f3f3);
 }
 
+.domain-picker__row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.domain-picker__row .domain-picker__item {
+  flex: 1;
+  min-width: 0;
+  padding-right: 36px;
+}
+
+.domain-picker__remove {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 1px rgba(15, 23, 42, 0.35));
+}
+
+.domain-picker__remove:hover {
+  color: #e11d48;
+  opacity: 1;
+  background: transparent;
+  filter: none;
+}
+
 .domain-picker__badge {
   flex: none;
   padding: 1px 6px;
@@ -3056,17 +3094,24 @@ body {
    Por isso usa --text/--muted (tokens pensados para fundo escuro) e NÃO --muted-on-light,
    que é para os modais claros (ex.: .credentials-wizard). */
 .git-panel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 12px;
+  font-size: var(--fs-md, 13px);
+}
+
+.git-panel__trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-left: 12px;
-  font-size: var(--fs-md, 13px);
+  max-width: 280px;
 }
 
 .git-panel__branch {
   font-weight: 600;
   color: var(--text, #e6edf3);
-  max-width: 180px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3075,11 +3120,72 @@ body {
 .git-panel__summary {
   color: var(--muted, #9fb0c9);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.git-panel__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  min-width: 280px;
+  background: #2a3444;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 0;
+}
+
+.git-panel__status {
+  padding: 6px 12px 8px;
+  color: var(--muted, #9fb0c9);
+  font-size: var(--fs-sm, 12px);
+}
+
+.git-panel__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  padding: 8px 12px;
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+
+.git-panel__item:hover:not(:disabled) {
+  background: #244a87;
+}
+
+.git-panel__item--current {
+  font-weight: 600;
+  cursor: default;
+}
+
+.git-panel__row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px;
+  align-items: center;
+}
+
+.git-panel__input {
+  flex: 1;
+  min-width: 0;
+  background: #1a202c;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: var(--fs-md);
 }
 
 .git-panel__message {
   color: var(--muted, #9fb0c9);
   font-style: italic;
+  padding: 6px 12px 8px;
   max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;

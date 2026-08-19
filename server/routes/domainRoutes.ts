@@ -9,8 +9,9 @@ import {
   attachGitToDomain,
   getDomain,
   activateDomain,
+  deleteDomain,
 } from '../domains.ts';
-import { getStatus, switchBranch, pull, commitAndPush, remoteUrl, credentialApprove } from '../git.ts';
+import { getStatus, switchBranch, pull, commit, push, remoteUrl, credentialApprove } from '../git.ts';
 import { buildPrUrl } from '../prUrl.ts';
 import { getActiveDomainSlug, setActiveDomainSlug } from '../domainContext.ts';
 
@@ -18,7 +19,7 @@ type CreateDomainBody = { name?: string };
 type CloneDomainBody = { url?: string; name?: string };
 type AttachGitBody = { remoteUrl?: string };
 type SwitchBranchBody = { branch?: string; create?: boolean };
-type PushBody = { message?: string };
+type CommitBody = { message?: string };
 type CredentialBody = { host?: string; username?: string; token?: string };
 
 /** Mensagem de erro legível para o usuário (stderr do git tem prioridade). */
@@ -81,6 +82,16 @@ export function registerDomainRoutes(app: FastifyInstance): void {
     }
   });
 
+  app.delete<{ Params: { id: string } }>('/api/domains/:id', async (req, reply) => {
+    try {
+      await deleteDomain(req.params.id);
+      return { ok: true };
+    } catch (e: any) {
+      if (isNotFound(e)) return reply.code(404).send({ error: e.message });
+      return reply.code(422).send({ error: errorMessage(e, 'Falha ao remover o domínio.') });
+    }
+  });
+
   app.get<{ Params: { id: string } }>('/api/domains/:id/git-status', async (req, reply) => {
     const domain = await getDomain(req.params.id).catch(() => null);
     if (!domain) return reply.code(404).send({ error: 'Domínio não encontrado.' });
@@ -116,16 +127,27 @@ export function registerDomainRoutes(app: FastifyInstance): void {
     }
   });
 
-  app.post<{ Params: { id: string }; Body: PushBody }>('/api/domains/:id/git/push', async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: CommitBody }>('/api/domains/:id/git/commit', async (req, reply) => {
     const message = req.body?.message?.trim();
     if (!message) return reply.code(400).send({ error: 'Mensagem de commit é obrigatória.' });
     const domain = await getDomain(req.params.id).catch(() => null);
     if (!domain?.hasGit) return reply.code(404).send({ error: 'Domínio sem git.' });
     try {
-      const result = await commitAndPush(domain.dir, message);
+      const result = await commit(domain.dir, message);
       return { ok: true, ...result };
     } catch (e: any) {
-      return reply.code(409).send({ error: errorMessage(e, 'Falha ao publicar.') });
+      return reply.code(409).send({ error: errorMessage(e, 'Falha ao commitar.') });
+    }
+  });
+
+  app.post<{ Params: { id: string } }>('/api/domains/:id/git/push', async (req, reply) => {
+    const domain = await getDomain(req.params.id).catch(() => null);
+    if (!domain?.hasGit) return reply.code(404).send({ error: 'Domínio sem git.' });
+    try {
+      const result = await push(domain.dir);
+      return { ok: true, ...result };
+    } catch (e: any) {
+      return reply.code(409).send({ error: errorMessage(e, 'Falha ao enviar.') });
     }
   });
 

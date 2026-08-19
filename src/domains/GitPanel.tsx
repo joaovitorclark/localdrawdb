@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../api';
 import type { DomainMeta, GitStatusResponse } from '../api';
+import { Chevron } from '../icons';
 import { formatGitSummary, hostFromRemote, isAuthError } from './gitPanelHelpers';
 import { CredentialsWizard } from './CredentialsWizard';
 
@@ -12,20 +13,12 @@ function readableError(msg: string): string {
   return msg.split(': ').slice(1).join(': ') || msg;
 }
 
-/** Guard do servidor (`server/git.ts`): trocar de branch com a árvore suja sempre falha. */
-function isDirtyTreeError(msg: string): boolean {
-  return /n[ãa]o commitadas/i.test(msg);
-}
-
 /**
- * Painel de git da toolbar: branch atual, resumo do status e as ações do dia a dia
- * (atualizar/publicar/abrir PR). Erros de credencial abrem o `CredentialsWizard`
- * em vez de despejar a mensagem crua do git na toolbar.
+ * Painel git da toolbar: um botão com a branch atual abre um dropdown
+ * (commit / pull / push, criar branch). Sem `window.prompt`.
  *
- * Domínio sem git não renderiza nada (`null`).
- *
- * `onRepoChanged` avisa o dono que os ARQUIVOS em disco mudaram (pull ou troca de
- * branch). Sem isso o App continuaria com o modelo carregado na montagem e o
+ * `onRepoChanged` avisa o dono que os ARQUIVOS em disco mudaram (pull / troca
+ * de branch). Sem isso o App continuaria com o modelo carregado na montagem e o
  * autosave gravaria o state antigo por cima do que acabou de ser puxado.
  */
 export function GitPanel({
@@ -36,10 +29,14 @@ export function GitPanel({
   onRepoChanged?: () => void;
 }) {
   const [status, setStatus] = useState<GitStatusResponse | null>(null);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [wizardHost, setWizardHost] = useState<string | null>(null);
+  const [newBranch, setNewBranch] = useState('');
+  const [commitMsg, setCommitMsg] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -57,11 +54,30 @@ export function GitPanel({
     void refreshStatus();
   }, [domain.hasGit, refreshStatus]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   if (!domain.hasGit) return null;
+
+  const git = status?.hasGit ? status : null;
+  const summary = formatGitSummary(status);
+  const branchLabel = git?.branch ?? '...';
 
   const openWizard = () => setWizardHost(hostFromRemote(domain.remoteUrl) ?? 'seu provedor git');
 
-  /** Erro de credencial vira wizard; o resto vira mensagem inline. */
   const handleFailure = (e: unknown) => {
     const msg = (e as Error)?.message ?? String(e);
     if (isAuthError(msg)) {
@@ -72,7 +88,6 @@ export function GitPanel({
     }
   };
 
-  /** Envolve uma ação de git com busy/limpeza de mensagem/refresh do status. */
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
     setMessage(null);
@@ -87,87 +102,147 @@ export function GitPanel({
     }
   };
 
+  const handleSwitch = (name: string) => {
+    if (!git || name === git.branch) return;
+    return run(async () => {
+      await api.switchGitBranch(domain.id, name, false);
+      setMessage(`Na branch ${name}.`);
+      onRepoChanged?.();
+    });
+  };
+
+  const handleCreateBranch = () => {
+    const name = newBranch.trim();
+    if (!name) return;
+    if (git && name === git.branch) return;
+    return run(async () => {
+      await api.switchGitBranch(domain.id, name, true);
+      setNewBranch('');
+      setMessage(`Na branch ${name}.`);
+      onRepoChanged?.();
+    });
+  };
+
+  const handleCommit = () => {
+    const msg = commitMsg.trim();
+    if (!msg) {
+      setMessage('Mensagem de commit é obrigatória.');
+      setError(true);
+      return;
+    }
+    return run(async () => {
+      await api.gitCommit(domain.id, msg);
+      setCommitMsg('');
+      setMessage('Commit criado.');
+    });
+  };
+
   const handlePull = () =>
     run(async () => {
       await api.gitPull(domain.id);
       setMessage('Atualizado.');
-      // O pull reescreveu project.dbml/canvas.json em disco: o dono precisa
-      // recarregar o App, senão o autosave sobrescreve o que foi puxado.
       onRepoChanged?.();
     });
 
-  const handlePublish = () => {
-    const msg = window.prompt('Mensagem do commit:');
-    if (!msg?.trim()) return;
-    return run(async () => {
-      await api.gitPush(domain.id, msg.trim());
-      setMessage('Publicado.');
+  const handlePush = () =>
+    run(async () => {
+      await api.gitPush(domain.id);
+      setMessage('Enviado.');
     });
-  };
-
-  const handleSwitchBranch = () => {
-    const current = status?.hasGit ? status.branch : '';
-    const branch = window.prompt('Trocar para a branch:', current);
-    if (!branch?.trim() || branch.trim() === current) return;
-    const target = branch.trim();
-    return run(async () => {
-      try {
-        await api.switchGitBranch(domain.id, target, false);
-      } catch (e: unknown) {
-        // Branch inexistente é o caso comum aqui: oferece criar em vez de só falhar.
-        // Erro de credencial ou árvore suja não tem conserto criando a branch: propaga.
-        const msg = (e as Error)?.message ?? String(e);
-        if (isAuthError(msg) || isDirtyTreeError(msg)) throw e;
-        const reason = readableError(msg);
-        if (!window.confirm(`${reason}\n\nCriar a branch "${target}"?`)) throw e;
-        await api.switchGitBranch(domain.id, target, true);
-      }
-      setMessage(`Na branch ${target}.`);
-      // Trocar de branch troca os arquivos do working tree: mesmo motivo do pull.
-      onRepoChanged?.();
-    });
-  };
 
   const handleOpenPr = () =>
     run(async () => {
       const { url } = await api.getPrUrl(domain.id);
       if (url) window.open(url, '_blank', 'noreferrer');
-      else setMessage('Sem link automático para este host — publique e abra o PR manualmente.');
+      else setMessage('Sem link automático para este host — faça push e abra o PR manualmente.');
     });
 
-  const summary = formatGitSummary(status);
-
   return (
-    <div className="git-panel">
+    <div className="git-panel" ref={rootRef}>
       <button
-        className="git-panel__branch"
-        onClick={() => void handleSwitchBranch()}
+        type="button"
+        className="git-panel__trigger"
+        aria-haspopup="menu"
+        aria-expanded={open}
         disabled={busy}
-        title="Trocar de branch"
+        title="Operações git"
+        onClick={() => setOpen((v) => !v)}
       >
-        {status?.hasGit ? status.branch : '...'}
+        <span className="git-panel__branch">{branchLabel}</span>
+        {summary ? <span className="git-panel__summary">{summary}</span> : null}
+        <Chevron dir="down" className="icon-inline" size={14} />
       </button>
-      {summary && <span className="git-panel__summary">{summary}</span>}
-      <button onClick={() => void handlePull()} disabled={busy} title="Puxar mudanças do remoto">
-        Atualizar
-      </button>
-      <button onClick={() => void handlePublish()} disabled={busy} title="Commitar e enviar ao remoto">
-        Publicar
-      </button>
-      <button onClick={() => void handleOpenPr()} disabled={busy} title="Abrir pull request no provedor">
-        Abrir PR
-      </button>
-      <button onClick={openWizard} disabled={busy} title="Configurar token de acesso">
-        Credenciais
-      </button>
-      {message && (
-        <span
-          className={error ? 'git-panel__message git-panel__message--error' : 'git-panel__message'}
-          title={message}
-        >
-          {error ? readableError(message) : message}
-        </span>
-      )}
+      {open ? (
+        <div className="git-panel__dropdown" role="menu">
+          {summary ? <div className="git-panel__status">{summary}</div> : null}
+          {git
+            ? git.branches.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  role="menuitem"
+                  className={
+                    name === git.branch ? 'git-panel__item git-panel__item--current' : 'git-panel__item'
+                  }
+                  disabled={busy || name === git.branch}
+                  onClick={() => void handleSwitch(name)}
+                >
+                  {name === git.branch ? `${name} (atual)` : name}
+                </button>
+              ))
+            : null}
+          <div className="git-panel__row">
+            <input
+              className="git-panel__input"
+              placeholder="nova-branch"
+              value={newBranch}
+              disabled={busy}
+              onChange={(e) => setNewBranch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreateBranch();
+              }}
+            />
+            <button type="button" disabled={busy || !newBranch.trim()} onClick={() => void handleCreateBranch()}>
+              Criar branch
+            </button>
+          </div>
+          <div className="git-panel__row">
+            <input
+              className="git-panel__input"
+              placeholder="mensagem do commit"
+              value={commitMsg}
+              disabled={busy}
+              onChange={(e) => setCommitMsg(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCommit();
+              }}
+            />
+            <button type="button" disabled={busy} onClick={() => void handleCommit()}>
+              commit
+            </button>
+          </div>
+          <button type="button" className="git-panel__item" disabled={busy} onClick={() => void handlePull()}>
+            pull
+          </button>
+          <button type="button" className="git-panel__item" disabled={busy} onClick={() => void handlePush()}>
+            push
+          </button>
+          <button type="button" className="git-panel__item" disabled={busy} onClick={() => void handleOpenPr()}>
+            Abrir PR
+          </button>
+          <button type="button" className="git-panel__item" disabled={busy} onClick={openWizard}>
+            Credenciais
+          </button>
+          {message ? (
+            <div
+              className={error ? 'git-panel__message git-panel__message--error' : 'git-panel__message'}
+              title={message}
+            >
+              {error ? readableError(message) : message}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {wizardHost && (
         <CredentialsWizard
           domainId={domain.id}

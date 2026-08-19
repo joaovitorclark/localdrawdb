@@ -94,6 +94,29 @@ describe('POST /api/domains/:id/activate', () => {
   });
 });
 
+describe('DELETE /api/domains/:id', () => {
+  it('remove o domínio e a pasta local', async () => {
+    const app = await buildApp();
+    await createDomain(app, 'Fica');
+    const gone = await createDomain(app, 'Sai');
+    const res = await app.inject({ method: 'DELETE', url: `/api/domains/${gone.id}` });
+    expect(res.statusCode).toBe(200);
+
+    const listed = await app.inject({ method: 'GET', url: '/api/domains' });
+    await app.close();
+    const body = listed.json() as { domains: { slug: string }[] };
+    expect(body.domains.map((d) => d.slug)).toEqual(['fica']);
+    await expect(fs.stat(gone.dir)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('404 para id inexistente', async () => {
+    const app = await buildApp();
+    const res = await app.inject({ method: 'DELETE', url: '/api/domains/nao-existe' });
+    await app.close();
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 describe('POST /api/domains/clone', () => {
   it('400 sem url', async () => {
     const app = await buildApp();
@@ -175,10 +198,11 @@ describe('GET /api/domains/:id/git-status', () => {
     const res = await app.inject({ method: 'GET', url: `/api/domains/${domain.id}/git-status` });
     await app.close();
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { hasGit: boolean; branch: string; dirty: boolean };
+    const body = res.json() as { hasGit: boolean; branch: string; dirty: boolean; branches: string[] };
     expect(body.hasGit).toBe(true);
     expect(typeof body.branch).toBe('string');
     expect(typeof body.dirty).toBe('boolean');
+    expect(Array.isArray(body.branches)).toBe(true);
   });
 
   it('404 para domínio inexistente', async () => {
@@ -190,7 +214,7 @@ describe('GET /api/domains/:id/git-status', () => {
 });
 
 describe('rotas de git em domínio sem git', () => {
-  it('switch-branch / pull / push / pr-url / credential retornam 404', async () => {
+  it('switch-branch / pull / push / commit / pr-url / credential retornam 404', async () => {
     const app = await buildApp();
     const domain = await createDomain(app, 'SemGitRotas');
     const base = `/api/domains/${domain.id}/git`;
@@ -201,7 +225,12 @@ describe('rotas de git em domínio sem git', () => {
       payload: { branch: 'feature/x' },
     });
     const pull = await app.inject({ method: 'POST', url: `${base}/pull` });
-    const push = await app.inject({ method: 'POST', url: `${base}/push`, payload: { message: 'wip' } });
+    const push = await app.inject({ method: 'POST', url: `${base}/push` });
+    const commit = await app.inject({
+      method: 'POST',
+      url: `${base}/commit`,
+      payload: { message: 'wip' },
+    });
     const prUrl = await app.inject({ method: 'GET', url: `${base}/pr-url` });
     const credential = await app.inject({
       method: 'POST',
@@ -213,6 +242,7 @@ describe('rotas de git em domínio sem git', () => {
     expect(switchBranch.statusCode).toBe(404);
     expect(pull.statusCode).toBe(404);
     expect(push.statusCode).toBe(404);
+    expect(commit.statusCode).toBe(404);
     expect(prUrl.statusCode).toBe(404);
     expect(credential.statusCode).toBe(404);
   });
@@ -223,7 +253,7 @@ describe('rotas de git em domínio sem git', () => {
     const base = `/api/domains/${domain.id}/git`;
 
     const noBranch = await app.inject({ method: 'POST', url: `${base}/switch-branch`, payload: {} });
-    const noMessage = await app.inject({ method: 'POST', url: `${base}/push`, payload: {} });
+    const noMessage = await app.inject({ method: 'POST', url: `${base}/commit`, payload: {} });
     const noCred = await app.inject({ method: 'POST', url: `${base}/credential`, payload: { host: 'x' } });
     await app.close();
 
@@ -268,7 +298,6 @@ describe('rotas de git em domínio com git', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/api/domains/${domain.id}/git/push`,
-      payload: { message: 'wip' },
     });
     await app.close();
     expect(res.statusCode).toBe(409);
