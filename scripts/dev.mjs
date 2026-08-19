@@ -2,15 +2,12 @@
 import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { allocateDevPorts, findFreePort, waitForPort } from './devPorts.mjs';
+import { allocateDevPorts, findFreePort } from './devPorts.mjs';
 import { parseDevArgs, resolveSlugs } from './devArgs.mjs';
 import { loadRegistry, createProjectCli } from './registry.mjs';
+import { ROOT, TSX_CLI, VITE_CLI, startInstance, startPreviewInstance, stopInstance } from './instanceLauncher.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEV_META = path.join(ROOT, '.localdrawdb-dev.json');
-const TSX_CLI = path.join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-const VITE_CLI = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
 
 function requireDeps() {
   if (!existsSync(TSX_CLI) || !existsSync(VITE_CLI)) {
@@ -79,9 +76,8 @@ let stopping = false;
 function shutdown(code = 0) {
   if (stopping) return;
   stopping = true;
-  for (const { server, web } of instances) {
-    server.kill('SIGTERM');
-    web?.kill('SIGTERM');
+  for (const handle of instances) {
+    stopInstance(handle);
   }
   try {
     unlinkSync(DEV_META);
@@ -99,83 +95,6 @@ function supervise(handle) {
     if (code && code !== 0) shutdown(code);
   });
   if (handle.web) handle.web.on('exit', (code) => { if (code && code !== 0) shutdown(code); });
-}
-
-/**
- * Start one server+vite pair.
- * @param {{ slug: string|null, apiPort: number, webPort: number }} opts
- * @returns {Promise<{ server: import('node:child_process').ChildProcess, web: import('node:child_process').ChildProcess }>}
- */
-async function startInstance({ slug, apiPort, webPort }) {
-  const env = {
-    ...process.env,
-    PORT: String(apiPort),
-    API_PORT: String(apiPort),
-    VITE_PORT: String(webPort),
-    // Pin de projeto (./ldb <slug>) só faz sentido dentro do domínio local, então
-    // os dois andam juntos. Sem slug, NÃO pina domínio: é a tela de escolha
-    // (AppGate/DomainPicker) que decide o domínio ativo.
-    ...(slug ? { LOCALDRAWDB_DOMAIN: 'local', LOCALDRAWDB_PROJECT: slug } : {}),
-  };
-
-  const nodeArgs = (script, ...args) => [script, ...args];
-
-  const server = spawn(process.execPath, nodeArgs(TSX_CLI, 'watch', 'server/index.ts'), {
-    cwd: ROOT,
-    env,
-    stdio: 'inherit',
-  });
-
-  await waitForPort(apiPort);
-
-  const web = spawn(process.execPath, nodeArgs(VITE_CLI, '--port', String(webPort), '--strictPort'), {
-    cwd: ROOT,
-    env,
-    stdio: 'inherit',
-  });
-
-  // Sem isto o orquestrador segue para o próximo projeto enquanto o Vite
-  // ainda pode morrer com EADDRINUSE — e as APIs órfãs continuam no ar.
-  await new Promise((resolve, reject) => {
-    const onExit = (code) => {
-      reject(
-        new Error(
-          `Vite não subiu na porta ${webPort} (código ${code ?? 'null'}). ` +
-            `Quase sempre é outro npm run dev ainda rodando.\n` +
-            `  lsof -nP -iTCP:${webPort} -sTCP:LISTEN\n` +
-            `  kill <PID>`,
-        ),
-      );
-    };
-    web.once('exit', onExit);
-    waitForPort(webPort, '127.0.0.1', 30_000)
-      .then(() => {
-        web.off('exit', onExit);
-        resolve();
-      })
-      .catch(reject);
-  });
-
-  return { server, web };
-}
-
-/**
- * Start one preview (production static) instance — no Vite.
- * @param {{ slug: string|null, port: number }} opts
- * @returns {{ server: import('node:child_process').ChildProcess, web: null }}
- */
-function startPreviewInstance({ slug, port }) {
-  const env = {
-    ...process.env,
-    NODE_ENV: 'production',
-    PORT: String(port),
-    // Mesmo critério de startInstance: pin de domínio só acompanha pin de projeto.
-    ...(slug ? { LOCALDRAWDB_DOMAIN: 'local', LOCALDRAWDB_PROJECT: slug } : {}),
-  };
-  const server = spawn(process.execPath, [TSX_CLI, 'server/index.ts'], {
-    cwd: ROOT, env, stdio: 'inherit',
-  });
-  return { server, web: null };
 }
 
 if (parsed.preview) {
@@ -264,7 +183,7 @@ if (parsed.preview) {
 
   // Step 6: Spawn and supervise (process stays alive via child supervision / signal handlers)
   for (const { slug, port } of previewMeta) {
-    const handle = startPreviewInstance({ slug, port });
+    const handle = startPreviewInstance({ domainSlug: slug ? 'local' : null, projectSlug: slug, port });
     instances.push(handle);
     supervise(handle);
   }
@@ -306,7 +225,7 @@ if (parsed.preview) {
 
     let handle;
     try {
-      handle = await startInstance({ slug: null, apiPort, webPort });
+      handle = await startInstance({ domainSlug: null, projectSlug: null, apiPort, webPort });
     } catch (err) {
       console.error(String(err));
       try { unlinkSync(DEV_META); } catch { /* ok */ }
@@ -345,7 +264,7 @@ if (parsed.preview) {
     for (const { slug, apiPort, webPort } of instanceMeta) {
       let handle;
       try {
-        handle = await startInstance({ slug, apiPort, webPort });
+        handle = await startInstance({ domainSlug: 'local', projectSlug: slug, apiPort, webPort });
       } catch (err) {
         console.error(`Erro ao iniciar instância '${slug}': ${err}`);
         shutdown(1);
