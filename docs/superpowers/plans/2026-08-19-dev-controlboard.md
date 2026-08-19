@@ -1423,7 +1423,12 @@ Por:
   // continuam como atalhos explícitos pro comportamento eager de sempre.
   if (explicit === 'shared') return { mode: 'shared', slugs: null, preview };
   if (explicit === 'all') return { mode: 'all', slugs: null, preview };
-  return { mode: 'board', slugs: null, preview };
+  // --preview sozinho (sem --all/--shared/slug) sempre significou "todos, em
+  // preview" — o controlboard não tem como agir sobre essa intenção, então
+  // preserva o default antigo (`all`) só nesse caso pra não descartar o flag
+  // em silêncio.
+  if (preview) return { mode: 'all', slugs: null, preview: true };
+  return { mode: 'board', slugs: null, preview: false };
 }
 ```
 
