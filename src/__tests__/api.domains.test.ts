@@ -111,14 +111,25 @@ describe('gitPull', () => {
   });
 });
 
-describe('gitPush', () => {
+describe('gitCommit', () => {
   it('faz POST com a mensagem de commit', async () => {
     mockFetchOnce(200, { ok: true, branch: 'main' });
     const api = await import('../api.ts');
-    await api.gitPush('dom-1', 'feat: x');
+    await api.gitCommit('dom-1', 'feat: x');
+    const [url, opts] = (fetch as any).mock.calls[0];
+    expect(url).toBe('/api/domains/dom-1/git/commit');
+    expect(JSON.parse(opts.body)).toEqual({ message: 'feat: x' });
+  });
+});
+
+describe('gitPush', () => {
+  it('faz POST sem mensagem', async () => {
+    mockFetchOnce(200, { ok: true, branch: 'main' });
+    const api = await import('../api.ts');
+    await api.gitPush('dom-1');
     const [url, opts] = (fetch as any).mock.calls[0];
     expect(url).toBe('/api/domains/dom-1/git/push');
-    expect(JSON.parse(opts.body)).toEqual({ message: 'feat: x' });
+    expect(JSON.parse(opts.body)).toEqual({});
   });
 });
 

@@ -287,7 +287,14 @@ export type DomainMeta = {
   updatedAt: string;
 };
 
-export type GitStatus = { branch: string; ahead: number; behind: number; dirty: boolean; files: string[] };
+export type GitStatus = {
+  branch: string;
+  ahead: number;
+  behind: number;
+  dirty: boolean;
+  files: string[];
+  branches: string[];
+};
 export type GitStatusResponse = { hasGit: false } | ({ hasGit: true } & GitStatus);
 
 export const listDomains = (): Promise<{ domains: DomainMeta[]; activeDomainSlug: string | null }> =>
@@ -314,8 +321,11 @@ export const switchGitBranch = (
 
 export const gitPull = (id: string): Promise<{ ok: boolean }> => post(`/api/domains/${id}/git/pull`, {});
 
-export const gitPush = (id: string, message: string): Promise<{ ok: boolean; branch: string }> =>
-  post(`/api/domains/${id}/git/push`, { message });
+export const gitCommit = (id: string, message: string): Promise<{ ok: boolean; branch: string }> =>
+  post(`/api/domains/${id}/git/commit`, { message });
+
+export const gitPush = (id: string): Promise<{ ok: boolean; branch: string }> =>
+  post(`/api/domains/${id}/git/push`, {});
 
 export const getPrUrl = (
   id: string,

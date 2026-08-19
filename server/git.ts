@@ -44,6 +44,7 @@ export interface GitStatus {
   behind: number;
   dirty: boolean;
   files: string[];
+  branches: string[];
 }
 
 function run(cwd: string, args: string[], opts: { trim?: boolean } = {}): Promise<string> {
@@ -112,6 +113,7 @@ export async function getStatus(dir: string): Promise<GitStatus> {
   const branch = await currentBranch(dir);
   const porcelain = await run(dir, ['status', '--porcelain'], { trim: false });
   const files = porcelain ? porcelain.split('\n').map((l) => l.slice(3).trim()) : [];
+  const branches = await listBranches(dir);
   let ahead = 0;
   let behind = 0;
   try {
@@ -122,14 +124,12 @@ export async function getStatus(dir: string): Promise<GitStatus> {
   } catch {
     // sem upstream configurado — sem ahead/behind, não é um erro fatal
   }
-  return { branch, ahead, behind, dirty: files.length > 0, files };
+  return { branch, ahead, behind, dirty: files.length > 0, files, branches };
 }
 
 export async function switchBranch(dir: string, branch: string, create = false): Promise<void> {
-  const status = await getStatus(dir);
-  if (status.dirty) {
-    throw new Error('Há mudanças não commitadas — salve ou commite antes de trocar de branch.');
-  }
+  // Sem pré-check de dirty: criar branch (`switch -c`) leva os arquivos sujos
+  // junto, como o git. Trocar para existente recusa só se o git recusar.
   await run(dir, create ? ['switch', '-c', branch] : ['switch', branch]);
 }
 
@@ -141,16 +141,36 @@ export async function pull(dir: string): Promise<void> {
   await run(dir, ['pull']);
 }
 
-export async function commitAndPush(dir: string, message: string): Promise<{ branch: string }> {
+export async function commit(dir: string, message: string): Promise<{ branch: string }> {
   const branch = await currentBranch(dir);
   await run(dir, ['add', '-A']);
   const pending = await run(dir, ['status', '--porcelain']);
   if (!pending) {
-    throw new Error('Nada para publicar — nenhuma mudança pendente.');
+    throw new Error('Nada para commitar.');
   }
   await run(dir, ['commit', '-m', message]);
-  await run(dir, ['push', '-u', 'origin', branch]);
   return { branch };
+}
+
+async function hasUpstream(dir: string, branch: string): Promise<boolean> {
+  try {
+    await run(dir, ['rev-parse', '--verify', `origin/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function push(dir: string): Promise<{ branch: string }> {
+  const status = await getStatus(dir);
+  if (status.dirty) {
+    throw new Error('Há mudanças não commitadas — commite antes de enviar.');
+  }
+  if ((await hasUpstream(dir, status.branch)) && status.ahead === 0) {
+    throw new Error('Nada para enviar.');
+  }
+  await run(dir, ['push', '-u', 'origin', status.branch]);
+  return { branch: status.branch };
 }
 
 export async function remoteUrl(dir: string): Promise<string | null> {

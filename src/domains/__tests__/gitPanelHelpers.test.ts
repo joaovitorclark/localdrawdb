@@ -12,31 +12,31 @@ describe('formatGitSummary', () => {
 
   it('em dia (sem dirty/ahead/behind)', () => {
     expect(
-      formatGitSummary({ hasGit: true, branch: 'main', ahead: 0, behind: 0, dirty: false, files: [] }),
+      formatGitSummary({ hasGit: true, branch: 'main', ahead: 0, behind: 0, dirty: false, files: [], branches: ['main'] }),
     ).toBe('Em dia');
   });
 
   it('dirty com N arquivos', () => {
     expect(
-      formatGitSummary({ hasGit: true, branch: 'main', ahead: 0, behind: 0, dirty: true, files: ['a.dbml', 'b.json'] }),
+      formatGitSummary({ hasGit: true, branch: 'main', ahead: 0, behind: 0, dirty: true, files: ['a.dbml', 'b.json'], branches: ['main'] }),
     ).toBe('● 2 não commitados');
   });
 
   it('1 arquivo usa singular', () => {
     expect(
-      formatGitSummary({ hasGit: true, branch: 'main', ahead: 0, behind: 0, dirty: true, files: ['a.dbml'] }),
+      formatGitSummary({ hasGit: true, branch: 'main', ahead: 0, behind: 0, dirty: true, files: ['a.dbml'], branches: ['main'] }),
     ).toBe('● 1 não commitado');
   });
 
   it('ahead e behind combinados', () => {
     expect(
-      formatGitSummary({ hasGit: true, branch: 'main', ahead: 2, behind: 1, dirty: false, files: [] }),
+      formatGitSummary({ hasGit: true, branch: 'main', ahead: 2, behind: 1, dirty: false, files: [], branches: ['main'] }),
     ).toBe('↑2 ↓1');
   });
 
   it('dirty + ahead na mesma linha', () => {
     expect(
-      formatGitSummary({ hasGit: true, branch: 'main', ahead: 3, behind: 0, dirty: true, files: ['a.dbml'] }),
+      formatGitSummary({ hasGit: true, branch: 'main', ahead: 3, behind: 0, dirty: true, files: ['a.dbml'], branches: ['main'] }),
     ).toBe('● 1 não commitado ↑3');
   });
 });
