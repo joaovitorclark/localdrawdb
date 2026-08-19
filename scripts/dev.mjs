@@ -97,7 +97,19 @@ function supervise(handle) {
   if (handle.web) handle.web.on('exit', (code) => { if (code && code !== 0) shutdown(code); });
 }
 
-if (parsed.preview) {
+if (parsed.mode === 'board') {
+  // --- Board mode: sobe só o controlboard; instâncias nascem sob demanda ---
+  const port = await findFreePort(Number(process.env.CONTROLBOARD_PORT) || 5170);
+  const env = { ...process.env, PORT: String(port) };
+  const server = spawn(process.execPath, [TSX_CLI, 'server/controlboard.ts'], {
+    cwd: ROOT,
+    env,
+    stdio: 'inherit',
+  });
+  const handle = { server, web: null };
+  instances.push(handle);
+  supervise(handle);
+} else if (parsed.preview) {
   // --- Preview mode: serve built dist/ via Fastify static, no Vite ---
 
   // Step 1: Resolve targets BEFORE building (fail fast on bad slugs)

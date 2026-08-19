@@ -1,10 +1,11 @@
 #!/bin/sh
 # ldb — atalho para o launcher multimodo (estilo `uv run`), sem o `--` do npm.
 #
-#   ./ldb                 modo compartilhado (todos os projetos, 1 instância)
+#   ./ldb                 controlboard (escolhe domínio/projeto, aloca porta ao clicar)
 #   ./ldb --list          lista os projetos (slug + nome)
 #   ./ldb lakehouse       fixa 1 projeto (casa por substring única do slug)
 #   ./ldb vendas rh       vários projetos, cada um na sua porta
-#   ./ldb --all           1 instância por projeto
+#   ./ldb --all           todos de uma vez, 1 instância por projeto
+#   ./ldb --shared        instância única compartilhada (com o seletor de projeto)
 #   ./ldb --preview vendas rh   modo leve (build estático, sem Vite)
 exec node "$(dirname "$0")/scripts/dev.mjs" "$@"
