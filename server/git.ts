@@ -1,8 +1,9 @@
 // Wrapper fino sobre o `git` do sistema (child_process). Sem lib de git em
 // JS — decisão da Spec A (robustez de auth/SSH/LFS de graça).
 import { execFile } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { promises as fs, realpathSync } from 'node:fs';
 import path from 'node:path';
+import { baseDataDir } from './domainContext.ts';
 
 export class GitError extends Error {
   readonly stderr: string;
@@ -22,10 +23,32 @@ function redactCredentials(text: string): string {
   return text.replace(/(https?:\/\/)[^\s/@]+@/g, '$1***@');
 }
 
+// Diretórios-teto para a descoberta de repositório do git: sem isso, um comando
+// rodado em `data/domains/<slug>/` que ainda não tem `.git` próprio sobe a
+// árvore e encontra o `.git` do PRÓPRIO LocalDrawDB — e como `data/` está no
+// `.gitignore` dele, um `commit --allow-empty` + `branch -M main` + `push`
+// acabam operando no repositório do LocalDrawDB. Com `GIT_CEILING_DIRECTORIES`
+// apontando para `data/`, o git para de subir ali e falha limpo ("not a git
+// repository") em vez de vazar. Um `.git` legítimo DENTRO de `data/domains/...`
+// continua sendo achado (o teto só impede subir ACIMA de `data/`).
+// Inclui o `realpath` porque `os.tmpdir()` no macOS é symlink e o git compara
+// contra o caminho já resolvido.
+function gitCeilingDirs(): string {
+  const raw = baseDataDir();
+  const dirs = new Set([raw]);
+  try {
+    dirs.add(realpathSync(raw));
+  } catch {
+    // `data/` pode ainda não existir; o caminho cru já cobre o caso comum
+  }
+  return [...dirs].join(path.delimiter);
+}
+
 // Opções comuns a todo spawn de `git`:
 // - `GIT_TERMINAL_PROMPT=0`: sem isso, um `pull`/`clone` contra repo privado sem
 //   credencial configurada fica pendurado pedindo login no terminal — segurando
 //   a requisição HTTP indefinidamente.
+// - `GIT_CEILING_DIRECTORIES`: isola a descoberta de repo de `data/` (ver acima).
 // - `timeout`: rede lenta/remote inacessível não pode virar request eterno.
 // - `maxBuffer`: saídas grandes (clone verboso, status enorme) não podem matar
 //   o comando com ENOBUFS no default de 1MB.
@@ -34,8 +57,38 @@ function spawnOptions(cwd: string, timeout = 30_000) {
     cwd,
     timeout,
     maxBuffer: 10 * 1024 * 1024,
-    env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: '0',
+      GIT_CEILING_DIRECTORIES: gitCeilingDirs(),
+    },
   };
+}
+
+/**
+ * Recusa operar quando `dir` não é a raiz de um repositório git próprio —
+ * defesa em profundidade sobre `GIT_CEILING_DIRECTORIES`: mesmo que o teto
+ * falhe num SO exótico, `commit` / `branch -M` / `push` não rodam num repo
+ * ancestral (o do LocalDrawDB).
+ *
+ * `git rev-parse --git-dir` devolve `.git` (relativo) quando o cwd é a raiz do
+ * repo, e um caminho absoluto quando o cwd é um subdiretório de um repo
+ * ancestral — é exatamente essa distinção que separa "repo do domínio" de
+ * "herdou o repo do LocalDrawDB". Sem tocar no `fs` (a comparação é feita
+ * resolvendo o caminho relativo a `dir`).
+ */
+async function assertOwnRepo(dir: string): Promise<void> {
+  try {
+    const gitDir = await run(dir, ['rev-parse', '--git-dir']);
+    if (path.resolve(dir, gitDir) === path.resolve(dir, '.git')) return;
+  } catch {
+    // não está dentro de repo nenhum (com o ceiling, o caso comum do bug)
+  }
+  throw new GitError(
+    `Recusado: "${dir}" não é a raiz de um repositório git próprio — ` +
+      `operação abortada para não tocar no repositório do LocalDrawDB.`,
+    '',
+  );
 }
 
 export interface GitStatus {
@@ -244,6 +297,7 @@ async function gitCommitFirst(dir: string, allowEmpty: boolean): Promise<void> {
 
 /** Commit inicial em `main` quando o repo ainda não tem HEAD (GitHub vazio / git init). */
 async function ensureInitialCommit(dir: string): Promise<void> {
+  await assertOwnRepo(dir);
   if (await hasHead(dir)) return;
   await writeReadmeIfMissing(dir);
   await gitCommitFirst(dir, true);
@@ -255,6 +309,10 @@ async function ensureInitialCommit(dir: string): Promise<void> {
  * No-op se `origin/main` já existe (já publicou). Push falho não lança.
  */
 export async function bootstrapEmptyRepo(dir: string): Promise<void> {
+  // Nunca bootstrapear um diretório que não é a raiz de um repo próprio —
+  // senão `add`/`commit`/`push` cairiam no repositório do LocalDrawDB.
+  await assertOwnRepo(dir);
+
   // Já enviado: não auto-commita trabalho sujo em repo que já tem histórico remoto.
   if ((await hasHead(dir)) && (await hasUpstream(dir, 'main'))) return;
 
