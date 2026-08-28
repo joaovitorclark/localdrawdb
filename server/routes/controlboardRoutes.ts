@@ -4,7 +4,7 @@
 // só via `npm run dev` (modo board, default sem argumentos).
 import type { FastifyInstance } from 'fastify';
 import { listDomains, createLocalDomain, cloneDomain, deleteDomain, getDomain } from '../domains.ts';
-import { listProjects, createProject, ensureRegistry } from '../files.ts';
+import { listProjects, createProject, ensureRegistry, syncRegistryWithDisk } from '../files.ts';
 import { setActiveDomainSlug } from '../domainContext.ts';
 import type { InstanceManager } from '../controlboardInstances.ts';
 
@@ -24,15 +24,17 @@ function isNotFound(e: any): boolean {
 /**
  * Lista os projetos de um domínio SEM os efeitos colaterais de
  * `activateDomain()` (que também dispara `seedGitIfNeeded` — commit/push de
- * bootstrap via rede). Troca o domínio ativo do processo e lê os projetos —
- * NÃO chama `ensureRegistry()`: isto é usado por um endpoint de listagem
- * (read-only), e `ensureRegistry()` materializaria um projeto "default" em
- * disco (`migrateLegacy()`) só de o domínio ser exibido no board.
- * `readRegistry()` (via `listProjects()`) já lida bem com `projects.json`
- * ausente, retornando lista vazia.
+ * bootstrap via rede). Troca o domínio ativo do processo e lê os projetos.
+ *
+ * Chama `syncRegistryWithDisk()` (add-only) mas NÃO `ensureRegistry()`: o sync
+ * só adota pastas `projects/<slug>/` que já existem — não materializa projeto
+ * "default" via `migrateLegacy()`. Assim um domínio clonado que traz projetos
+ * no disco (mas cujo `projects.json` foi perdido) aparece no board com os
+ * projetos certos.
  */
 async function listProjectsForDomain(slug: string) {
   setActiveDomainSlug(slug);
+  await syncRegistryWithDisk().catch(() => {});
   return listProjects();
 }
 

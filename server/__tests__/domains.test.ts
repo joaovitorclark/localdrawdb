@@ -104,6 +104,84 @@ describe('deleteDomain', () => {
     const { deleteDomain } = await import('../domains.ts');
     await expect(deleteDomain('nao-existe')).rejects.toThrow(/não encontrado/i);
   });
+
+  it('se o fs.rm falhar, não tira o domínio do registry (nada de pasta órfã)', async () => {
+    const { createLocalDomain, deleteDomain, listDomains } = await import('../domains.ts');
+    const d = await createLocalDomain('Presa');
+    await fs.writeFile(path.join(d.dir, 'projects.json'), '{"projects":[]}'); // "parece domínio"
+
+    const rmSpy = vi.spyOn(fs, 'rm').mockRejectedValueOnce(
+      Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' }),
+    );
+    try {
+      await expect(deleteDomain(d.id)).rejects.toThrow(/não foi possível apagar/i);
+    } finally {
+      rmSpy.mockRestore();
+    }
+
+    expect((await listDomains()).map((x) => x.id)).toContain(d.id);
+    expect(await fs.stat(d.dir).then((s) => s.isDirectory())).toBe(true);
+  });
+});
+
+describe('syncDomainsRegistryWithDisk / listDomains (auto-adoção)', () => {
+  it('adota pasta órfã com .git', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    const { listDomains } = await import('../domains.ts');
+
+    const orphan = path.join(tmpDir, 'domains', 'lakehouse-data-modeler');
+    await fs.mkdir(orphan, { recursive: true });
+    await exec('git', ['init', '-b', 'main', orphan]);
+
+    const domains = await listDomains();
+    expect(domains.map((d) => d.slug)).toContain('lakehouse-data-modeler');
+    expect(domains.find((d) => d.slug === 'lakehouse-data-modeler')?.hasGit).toBe(true);
+  });
+
+  it('adota pasta órfã com projects.json e ignora pasta de lixo', async () => {
+    const { listDomains, syncDomainsRegistryWithDisk } = await import('../domains.ts');
+
+    await fs.mkdir(path.join(tmpDir, 'domains', 'vendas'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'domains', 'vendas', 'projects.json'), '{"projects":[]}');
+    await fs.mkdir(path.join(tmpDir, 'domains', 'autorizacao_git'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'domains', 'autorizacao_git', 'dump.sql'), 'select 1;');
+
+    const added = await syncDomainsRegistryWithDisk();
+    expect(added).toEqual(['vendas']);
+
+    const slugs = (await listDomains()).map((d) => d.slug);
+    expect(slugs).toContain('vendas');
+    expect(slugs).not.toContain('autorizacao_git');
+  });
+
+  it('é idempotente: segunda chamada não adiciona de novo', async () => {
+    const { syncDomainsRegistryWithDisk } = await import('../domains.ts');
+    await fs.mkdir(path.join(tmpDir, 'domains', 'x'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'domains', 'x', 'projects.json'), '{"projects":[]}');
+    expect(await syncDomainsRegistryWithDisk()).toEqual(['x']);
+    expect(await syncDomainsRegistryWithDisk()).toEqual([]);
+  });
+});
+
+describe('cloneDomain com pasta já existente', () => {
+  it('não colide: clona para slug-2 quando a pasta do slug já existe no disco', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    const bare = path.join(tmpDir, 'src.git');
+    await exec('git', ['init', '--bare', '--initial-branch=main', bare]);
+
+    // pasta de lixo ocupando o slug alvo (não parece domínio → não é adotada)
+    await fs.mkdir(path.join(tmpDir, 'domains', 'src'), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, 'domains', 'src', 'algo.txt'), 'ocupado');
+
+    const { cloneDomain } = await import('../domains.ts');
+    const d = await cloneDomain(bare, 'src');
+    expect(d.slug).toBe('src-2');
+    expect(await fs.stat(d.dir).then((s) => s.isDirectory())).toBe(true);
+  });
 });
 
 describe('activateDomain', () => {
