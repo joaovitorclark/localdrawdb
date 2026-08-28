@@ -20,14 +20,17 @@ Nenhum banco, nenhum Docker.
 
 ```bash
 npm install
-npm run dev          # sobe TODOS os projetos, cada um na sua porta (o terminal lista as URLs)
+npm run dev          # abre o controlboard — escolha domínio/projeto, a porta é alocada ao clicar
+npm run dev:all       # sobe TODOS os projetos de uma vez, cada um na sua porta (comportamento antigo)
 npm run dev:shared   # 1 instância única servindo todos, com o seletor de projeto na UI
-# Ctrl-C encerra todas as instâncias do conjunto
+# Ctrl-C encerra o controlboard (e as instâncias que ele abriu) ou o conjunto do modo escolhido
 ```
 
-> `npm run dev` sem argumentos abre **um servidor por projeto** (cada um numa porta). Para
-> rodar **só alguns**, passe os slugs (ver abaixo); para a **instância única** de antes, use
-> `npm run dev:shared` (ou `./ldb --shared`).
+> `npm run dev` sem argumentos abre o **controlboard**: uma tela pra escolher qual
+> domínio/projeto abrir, alocando a porta só quando você clica. Para rodar **todos de uma
+> vez** (comportamento de antes), use `npm run dev:all` (ou `./ldb --all`); para a
+> **instância única** com seletor embutido, `npm run dev:shared` (ou `./ldb --shared`); para
+> pular a UI e ir direto a um projeto conhecido, passe os slugs (ver abaixo).
 
 Produção (um processo serve UI + API):
 
@@ -36,14 +39,20 @@ npm run build
 npm start          # http://localhost:5174
 ```
 
-### Rodar projetos em portas isoladas
+### Controlboard (default) e portas isoladas
 
-**Sem argumentos, sobe todos os projetos** (cada um na sua porta) — para comparar lado a
-lado e **controlar o consumo de memória**. Use o atalho **`./ldb`** (estilo `uv run`, sem o
-`--` do npm):
+**Sem argumentos, `npm run dev` abre o controlboard**: uma tela que lista os domínios
+(locais e git) e os projetos dentro deles — a porta só é alocada quando você clica em
+"Abrir". Várias instâncias podem ficar rodando ao mesmo tempo; o controlboard passa a
+listá-las com link e botão "Parar".
+
+Pra pular a UI e ir direto a projeto(s) conhecido(s) — cada um na sua porta, pra comparar
+lado a lado e **controlar o consumo de memória** — use o atalho **`./ldb`** (estilo
+`uv run`, sem o `--` do npm):
 
 ```bash
-./ldb                    # TODOS os projetos, 1 por porta (default)
+./ldb                    # controlboard (default)
+./ldb --all              # TODOS os projetos de uma vez, 1 por porta
 ./ldb --list             # lista os projetos (slug + nome)
 ./ldb lakehouse          # só 1 projeto (casa por substring única do slug)
 ./ldb vendas rh          # só esses, cada um na sua porta
@@ -54,7 +63,8 @@ lado e **controlar o consumo de memória**. Use o atalho **`./ldb`** (estilo `uv
 Sem o atalho, via npm (precisa do `--` para repassar slugs/flags):
 
 ```bash
-npm run dev                        # = ./ldb  (todos)
+npm run dev                        # = ./ldb  (controlboard)
+npm run dev:all                    # = ./ldb --all
 npm run list                       # = ./ldb --list
 npm run dev:shared                 # = ./ldb --shared
 npm run preview:all                # = ./ldb --all --preview

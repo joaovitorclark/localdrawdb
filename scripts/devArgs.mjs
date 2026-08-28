@@ -1,9 +1,10 @@
 // Parser puro das flags/slugs do launcher multimodo. Sem efeitos colaterais.
 //
-// SEM argumentos → `all` (todos os projetos, cada um na sua porta). `--shared` força a
-// instância única compartilhada (comportamento antigo). Slugs POSICIONAIS (estilo
-// `uv run`): `lakehouse`, `vendas rh`, `vendas,rh`. Flags: --all, --shared, --preview,
-// --list, e os aliases --project/--projects.
+// SEM argumentos → `board` (controlboard: tela de escolha, aloca porta só quando você
+// clica). `--all` sobe todos de uma vez (comportamento eager de antes); `--shared` força
+// a instância única compartilhada. Slugs POSICIONAIS (estilo `uv run`): `lakehouse`,
+// `vendas rh`, `vendas,rh`. Flags: --all, --shared, --preview, --list, e os aliases
+// --project/--projects.
 export function parseDevArgs(argv) {
   let explicit = null; // 'all' | 'shared' setado explicitamente por flag
   const slugs = [];
@@ -33,8 +34,16 @@ export function parseDevArgs(argv) {
   }
   if (list) return { mode: 'list', slugs: null, preview: false };
   if (slugs.length) return { mode: 'project', slugs, preview };
-  // Sem slugs: default = TODOS; --shared força a instância única compartilhada.
-  return { mode: explicit === 'shared' ? 'shared' : 'all', slugs: null, preview };
+  // Sem slugs: default = controlboard (a escolha fica na UI). --all/--shared
+  // continuam como atalhos explícitos pro comportamento eager de sempre.
+  if (explicit === 'shared') return { mode: 'shared', slugs: null, preview };
+  if (explicit === 'all') return { mode: 'all', slugs: null, preview };
+  // --preview sozinho (sem --all/--shared/slug) sempre significou "todos, em
+  // preview" — o controlboard não tem como agir sobre essa intenção, então
+  // preserva o default antigo (`all`) só nesse caso pra não descartar o flag
+  // em silêncio.
+  if (preview) return { mode: 'all', slugs: null, preview: true };
+  return { mode: 'board', slugs: null, preview: false };
 }
 
 /**
@@ -44,7 +53,7 @@ export function parseDevArgs(argv) {
  */
 export function resolveSlugs(parsed, registry) {
   const available = registry.projects.map((p) => p.slug);
-  if (parsed.mode === 'shared' || parsed.mode === 'list') return null;
+  if (parsed.mode === 'shared' || parsed.mode === 'list' || parsed.mode === 'board') return null;
   if (parsed.mode === 'all') {
     if (available.length === 0) throw new Error('Nenhum projeto no registry.');
     return available;

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { parseDevArgs, resolveSlugs } from '../devArgs.mjs';
 
 describe('parseDevArgs', () => {
-  it('sem flags = todos os projetos (all)', () => {
-    expect(parseDevArgs([])).toEqual({ mode: 'all', slugs: null, preview: false });
+  it('sem flags = controlboard (board)', () => {
+    expect(parseDevArgs([])).toEqual({ mode: 'board', slugs: null, preview: false });
+  });
+  it('--preview sozinho (sem --all/--shared/slug) continua = todos em preview', () => {
+    expect(parseDevArgs(['--preview'])).toEqual({ mode: 'all', slugs: null, preview: true });
   });
   it('--shared = instância única compartilhada', () => {
     expect(parseDevArgs(['--shared'])).toEqual({ mode: 'shared', slugs: null, preview: false });
@@ -64,8 +67,8 @@ describe('resolveSlugs', () => {
   it('--shared → null (instância única)', () => {
     expect(resolveSlugs(parseDevArgs(['--shared']), REG)).toBeNull();
   });
-  it('sem flags (default) → todos os slugs', () => {
-    expect(resolveSlugs(parseDevArgs([]), REG)).toEqual(['alpha', 'beta']);
+  it('sem flags (default) → null (controlboard decide na UI)', () => {
+    expect(resolveSlugs(parseDevArgs([]), REG)).toBeNull();
   });
   it('all → todos os slugs', () => {
     expect(resolveSlugs(parseDevArgs(['--all']), REG)).toEqual(['alpha', 'beta']);
