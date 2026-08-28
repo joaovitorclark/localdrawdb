@@ -49,6 +49,22 @@ describe('isGitAvailable', () => {
   });
 });
 
+describe('spawnOptions (isolamento de data/)', () => {
+  it('todo spawn de git leva GIT_CEILING_DIRECTORIES para não subir acima de data/', async () => {
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    execFileMock.mockImplementationOnce((_cmd, _args, optsOrCb, cb) => {
+      const opts = typeof optsOrCb === 'function' ? undefined : optsOrCb;
+      capturedEnv = (opts as { env?: NodeJS.ProcessEnv } | undefined)?.env;
+      const callback = typeof optsOrCb === 'function' ? optsOrCb : cb;
+      callback(null, 'main', '');
+    });
+    const { currentBranch } = await import('../git.ts');
+    await currentBranch('/tmp/repo');
+    expect(capturedEnv?.GIT_CEILING_DIRECTORIES).toBeTruthy();
+    expect(capturedEnv?.GIT_TERMINAL_PROMPT).toBe('0');
+  });
+});
+
 describe('getStatus', () => {
   it('parseia branch, dirty e arquivos modificados', async () => {
     mockExecFileOnce('main'); // branch --show-current
@@ -110,15 +126,17 @@ describe('switchBranch', () => {
   });
 
   it('usa `switch -c` quando create=true e já existe HEAD', async () => {
+    mockExecFileOnce('.git'); // ensureInitialCommit → assertOwnRepo: rev-parse --git-dir
     mockExecFileOnce('abc123'); // rev-parse --verify HEAD
     mockExecFileOnce('');
     const { switchBranch } = await import('../git.ts');
     await switchBranch('/tmp/repo', 'nova', true);
-    expect(execFileMock.mock.calls[1][1]).toEqual(['switch', '-c', 'nova']);
-    expect(execFileMock).toHaveBeenCalledTimes(2);
+    expect(execFileMock.mock.calls[2][1]).toEqual(['switch', '-c', 'nova']);
+    expect(execFileMock).toHaveBeenCalledTimes(3);
   });
 
   it('sem HEAD, grava first commit antes de criar a branch (para main existir)', async () => {
+    mockExecFileOnce('.git'); // assertOwnRepo: rev-parse --git-dir
     mockExecFileFail('ambiguous argument HEAD');
     mockExecFileOnce(''); // add -A
     mockExecFileOnce(''); // commit --allow-empty
@@ -127,9 +145,10 @@ describe('switchBranch', () => {
     const { switchBranch } = await import('../git.ts');
     await switchBranch('/tmp/repo', 'nova', true);
     const cmds = execFileMock.mock.calls.map((c) => c[1] as string[]);
-    expect(cmds[0]).toEqual(['rev-parse', '--verify', 'HEAD']);
-    expect(cmds[1]).toEqual(['add', '-A']);
-    expect(cmds[2]).toEqual([
+    expect(cmds[0]).toEqual(['rev-parse', '--git-dir']);
+    expect(cmds[1]).toEqual(['rev-parse', '--verify', 'HEAD']);
+    expect(cmds[2]).toEqual(['add', '-A']);
+    expect(cmds[3]).toEqual([
       '-c',
       'user.name=LocalDrawDB',
       '-c',
@@ -139,14 +158,15 @@ describe('switchBranch', () => {
       '-m',
       'first commit',
     ]);
-    expect(cmds[3]).toEqual(['branch', '-M', 'main']);
-    expect(cmds[4]).toEqual(['switch', '-c', 'nova']);
+    expect(cmds[4]).toEqual(['branch', '-M', 'main']);
+    expect(cmds[5]).toEqual(['switch', '-c', 'nova']);
   });
 });
 
 describe('initRepo', () => {
   it('init -b main e first commit quando não há HEAD', async () => {
     mockExecFileOnce(''); // init -b main
+    mockExecFileOnce('.git'); // bootstrapEmptyRepo → assertOwnRepo: rev-parse --git-dir
     mockExecFileFail('no HEAD'); // bootstrap early: hasHead
     mockExecFileFail('no origin'); // remote get-url
     mockExecFileFail('no HEAD'); // headed
@@ -164,6 +184,7 @@ describe('initRepo', () => {
   it('não recommita se origin/main já existe', async () => {
     mockExecFileOnce(''); // init -b main
     mockExecFileOnce('https://github.com/a/b.git'); // remote add
+    mockExecFileOnce('.git'); // bootstrapEmptyRepo → assertOwnRepo: rev-parse --git-dir
     mockExecFileOnce('deadbeef'); // hasHead
     mockExecFileOnce('origin/main'); // hasUpstream
     const { initRepo } = await import('../git.ts');
@@ -177,14 +198,16 @@ describe('initRepo', () => {
 
 describe('bootstrapEmptyRepo', () => {
   it('não faz nada se origin/main já existe', async () => {
+    mockExecFileOnce('.git'); // assertOwnRepo: rev-parse --git-dir
     mockExecFileOnce('abc123'); // hasHead
     mockExecFileOnce('origin/main'); // hasUpstream
     const { bootstrapEmptyRepo } = await import('../git.ts');
     await bootstrapEmptyRepo('/tmp/repo');
-    expect(execFileMock).toHaveBeenCalledTimes(2);
+    expect(execFileMock).toHaveBeenCalledTimes(3);
   });
 
   it('first commit e push mesmo com working tree suja (abrir projeto sem editar)', async () => {
+    mockExecFileOnce('.git'); // assertOwnRepo: rev-parse --git-dir
     mockExecFileOnce('abc123'); // hasHead
     mockExecFileFail('no origin/main'); // hasUpstream
     mockExecFileOnce('https://github.com/a/testea.git'); // get-url
