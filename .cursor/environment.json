@@ -1,0 +1,11 @@
+{
+  "name": "LocalDrawDB",
+  "install": "npm install",
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "npm run dev:shared"
+    }
+  ],
+  "ports": [5173, 5174]
+}
